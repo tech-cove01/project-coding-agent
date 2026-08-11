@@ -495,7 +495,7 @@ function handleMessage(msg) {
       break;
 
     case 'usage':
-      tokenInfo.textContent = '输入: ' + formatTokens(msg.data.inputTokens) + ' 词元 | 输出: ' + formatTokens(msg.data.outputTokens) + ' 词元';
+      tokenInfo.textContent = 'In: ' + formatTokens(msg.data.inputTokens) + ' | Out: ' + formatTokens(msg.data.outputTokens) + ' tokens';
       break;
 
     case 'error':

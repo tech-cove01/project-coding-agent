@@ -1,0 +1,21 @@
+config.yaml
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+dist/
+build/
+.idea/
+.vscode/
+.mewcode/
+.claude/
+CLAUDE.md
+
+# 运行时生成的数据与隐私（记忆、会话、历史、日志）
+.coding_agent/
+*.log
+.pytest_cache/
+.uv/
+
+# 误操作产生的空文件
+'

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import random
 import time as _time
@@ -92,6 +93,9 @@ def expand_at_refs(text: str, work_dir: str) -> str:
     return _AT_REF_RE.sub(_replace, text)
 
 
+logger = logging.getLogger(__name__)
+
+
 class ChatInput(TextArea):
     BINDINGS = [
         Binding("enter", "submit", "Submit", priority=True),
@@ -138,7 +142,7 @@ class ChatInput(TextArea):
             with open(self._history_file, "a", encoding="utf-8") as f:
                 f.write(text + "\n")
         except Exception:
-            pass
+            logger.warning("Failed to persist history entry", exc_info=True)
 
     def _popup(self) -> CompletionPopup | None:
         try:
@@ -1733,7 +1737,7 @@ class CodingAgent(App):
                     self.session._sessions_dir / f"{self.session.session_id}.meta"
                 )
         except Exception:
-            pass
+            logger.warning("Failed to save session summary", exc_info=True)
 
     # -----------------------------------------------------------------
     # MCP
@@ -1849,7 +1853,7 @@ class CodingAgent(App):
                             team.set_member_active(m.name, False)
                         self.team_manager.delete_team(name)
                     except Exception:
-                        pass
+                        logger.warning("Failed to delete team '%s' during shutdown", name, exc_info=True)
 
             if self.session:
                 self.session.close()
@@ -1857,7 +1861,7 @@ class CodingAgent(App):
         try:
             await _cleanup()
         except Exception:
-            pass
+            logger.warning("Error during cleanup on shutdown", exc_info=True)
         self.exit()
 
     def _show_error(self, text: str) -> None:

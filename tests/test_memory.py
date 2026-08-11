@@ -726,6 +726,64 @@ class TestMemoryManager:
         assert "[project]" in summaries[0]
         assert "db" in summaries[0]
 
+    def test_persist_collected_project_memory(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """LLM 输出的 project 类型记忆块被写入项目目录并建立索引。"""
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: fake_home))
+        project = tmp_path / "proj"
+        project.mkdir()
+        mgr = MemoryManager(str(project))
+        collected = (
+            "---\n"
+            "name: 数据库连接配置\ndescription: 使用连接池\n"
+            "type: project\n"
+            "---\n\n"
+            "项目使用 SQLAlchemy 连接池，pool_size=10。"
+        )
+        mgr._persist_collected_memories(collected)
+        files = mgr.load_all()
+        assert len(files) == 1
+        assert files[0].name == "数据库连接配置"
+        assert files[0].type == "project"
+        # 索引已建立
+        ep = Path(mgr._mem_dir) / "MEMORY.md"
+        assert "数据库连接配置" in ep.read_text(encoding="utf-8")
+
+    def test_persist_collected_user_memory_goes_to_user_dir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """user 类型记忆写入用户级目录（~/.coding_agent/memory/）。"""
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: fake_home))
+        project = tmp_path / "proj"
+        project.mkdir()
+        mgr = MemoryManager(str(project))
+        collected = (
+            "---\n"
+            "name: 用户偏好\ndescription: 喜欢中文注释\n"
+            "type: user\n"
+            "---\n\n"
+            "用户偏好使用中文注释编写代码。"
+        )
+        mgr._persist_collected_memories(collected)
+        # 用户级目录在 home/.coding_agent/memory
+        user_dir = fake_home / ".coding_agent" / "memory"
+        md_files = [f for f in user_dir.iterdir() if f.name.endswith(".md") and f.name != "MEMORY.md"]
+        assert len(md_files) == 1
+        assert "用户偏好" in md_files[0].read_text(encoding="utf-8")
+
+    def test_persist_skips_empty_and_no_memory(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """「无需记忆」或空输出不产生任何文件。"""
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: fake_home))
+        project = tmp_path / "proj"
+        project.mkdir()
+        mgr = MemoryManager(str(project))
+        mgr._persist_collected_memories("无需记忆")
+        mgr._persist_collected_memories("")
+        assert mgr.load_all() == []
+
 # =========================================================================
 # H. 会话注入长期记忆 inject_long_term_memory
 # =========================================================================

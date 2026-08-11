@@ -253,7 +253,36 @@ class AgentTool(Tool):
         )
         self._trace_manager.complete(trace_node.agent_id, "completed")
 
+        # 子 agent 结论沉淀：把本次子任务的结论写入主 agent 记忆库，供后续复用。
+        # 子 agent 运行时保持上下文隔离（不共享记忆），仅在完成任务后把结论沉淀。
+        if result_text:
+            await self._persist_subagent_conclusion(result_text)
+
         return ToolResult(output=result_text or "(sub-agent returned no output)")
+
+    async def _persist_subagent_conclusion(self, result_text: str) -> None:
+        """把子 agent 结论沉淀到主 agent 的 MemoryManager。
+
+        构造一个临时对话喂给 memory_manager.extract，让 LLM 判断哪些值得长期记。
+        extract 内部会按结论内容决定是否/如何写入记忆文件。异常不外抛。
+        """
+        parent = getattr(self, "_parent_agent", None)
+        if parent is None:
+            return
+        mm = getattr(parent, "memory_manager", None)
+        if mm is None:
+            return
+        try:
+            from coding_agent.conversation import ConversationManager
+            conv = ConversationManager()
+            conv.add_user_message(
+                "一个子 Agent 完成了任务，返回如下结论。请提取其中值得长期记忆的"
+                "项目知识、决策与经验，忽略过程性描述。\n\n"
+                f"{result_text[:8000]}"
+            )
+            await mm.extract(parent.client, conv, parent.protocol)
+        except Exception:
+            log.debug("Failed to persist subagent conclusion", exc_info=True)
 
     async def _execute_as_teammate(self, p: AgentToolParams) -> ToolResult:
         if self._team_manager is None:

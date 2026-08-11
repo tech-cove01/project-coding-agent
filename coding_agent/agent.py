@@ -7,12 +7,12 @@ import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, AsyncIterator, Callable
+from typing import Any, AsyncIterator, Awaitable, Callable
 
 from pydantic import ValidationError
 
 from coding_agent.client import LLMClient
-from coding_agent.context import CompactBoundary, CompactCircuitBreaker, CompactEvent, ContentReplacementRecord, ContentReplacementState, RecoveryState, append_replacement_records, apply_tool_result_budget, auto_compact, create_replacement_state, ensure_session_dir, load_replacement_records, reconstruct_replacement_state
+from coding_agent.context import BreakpointSignal, CompactBoundary, CompactCircuitBreaker, CompactEvent, ContentReplacementRecord, ContentReplacementState, HierarchicalMemory, RecoveryState, append_replacement_records, apply_tool_result_budget, auto_compact, create_replacement_state, ensure_session_dir, load_replacement_records, reconstruct_replacement_state
 from coding_agent.conversation import ConversationManager, ToolResultBlock, ToolUseBlock
 from coding_agent.conversation import ThinkingBlock as ConvThinkingBlock
 from coding_agent.memory.auto_memory import MemoryManager
@@ -303,6 +303,12 @@ class Agent:
         self.instructions_content = instructions_content
         self.memory_manager = memory_manager
         self.hook_engine = hook_engine
+        # L0-L3 分层记忆（长期记忆的组织容器，与 auto_compact 的上下文 token
+        # 压缩互补：hierarchical_memory 管"记忆分层组织"，auto_compact 管"上下文体积"）
+        self.hierarchical_memory = HierarchicalMemory(
+            max_context_window=context_window,
+            llm_call=self._make_llm_call(),
+        )
         self._loop_count = 0
         # 记忆提取合并策略（对齐 Go 版 inProgress + pendingContext）：
         # _extracting: 标记是否有提取正在进行
@@ -326,6 +332,69 @@ class Agent:
         # 非阻塞 memory recall：prefetch task 与主 LLM 调用并行，工具执行后注入
         self.memory_recall_task: Any | None = None
         self._memory_recall_consumed: bool = False
+
+    def _make_llm_call(self) -> Callable[[str, str], Awaitable[str]] | None:
+        """把异步流式 client 适配为 hierarchical_memory 需要的 async (model, prompt) -> str。
+
+        使用当前 event loop 消费一次 client.stream()，累积 TextDelta 返回完整文本。
+        model 参数（"small"/"main"）在此统一路由到当前 client（不对不同模型做区分，
+        保持与主 agent 同一 provider 的简单性）。
+        """
+        async def _call(_model: str, prompt: str) -> str:
+            return await self._run_simple_llm(prompt)
+        return _call
+
+    async def _run_simple_llm(self, prompt: str) -> str:
+        """发起一次简化 LLM 调用：把 prompt 作为单条用户消息，返回完整文本。
+
+        不参与工具调用 / 权限 / 记忆提取等主循环逻辑，仅用于分层记忆的摘要。
+        """
+        conv = ConversationManager()
+        conv.add_user_message(prompt)
+        collector = StreamCollector()
+        llm_stream = self.client.stream(conv, system="", tools=[])
+        async for _event in collector.consume(llm_stream):
+            pass
+        return collector.response.text or ""
+
+    def _feed_hierarchical_memory(self, tool_results: list[Any]) -> None:
+        """把本轮工具调用结果写入分层记忆（L0 工作记忆）。
+
+        仅在有实际工具结果时记录，避免空转；标记为安全断点(工具结束)。
+        """
+        if not tool_results:
+            return
+        try:
+            content = "\n".join(
+                f"[{getattr(tr, 'tool_use_id', '?')}]"
+                f"{'(error)' if getattr(tr, 'is_error', False) else ''}: "
+                f"{getattr(tr, 'content', '')[:2000]}"
+                for tr in tool_results
+            )
+            self.hierarchical_memory.add(
+                content,
+                safe_breakpoint=True,
+                has_entity=True,
+            )
+        except Exception:
+            log.debug("Failed to feed hierarchical memory", exc_info=True)
+
+    def _trigger_hierarchical_compact(self) -> None:
+        """在安全断点(工具结束)非阻塞触发 L0-L3 分层压缩。
+
+        用 ensure_future 放到后台，不阻塞主循环；压缩内部会按阈值判断
+        是否需要 L1/L2（L2 涉及 LLM 摘要调用）。异常不会外抛。
+        """
+        try:
+            asyncio.ensure_future(self._hierarchical_compact_worker())
+        except Exception:
+            log.debug("Failed to schedule hierarchical compact", exc_info=True)
+
+    async def _hierarchical_compact_worker(self) -> None:
+        try:
+            await self.hierarchical_memory.compress_memory(BreakpointSignal.TOOL_END)
+        except Exception:
+            log.warning("Hierarchical memory compression failed", exc_info=True)
 
     @property
     def _transcript_path(self) -> str:
@@ -743,6 +812,10 @@ class Agent:
                 tc.tool_name == "ExitPlanMode" for tc in response.tool_calls
             )
             conversation.add_tool_results_message(tool_results)
+
+            # L0-L3 分层记忆：记录本轮工具调用结果，并在安全断点(工具结束)非阻塞触发压缩
+            self._feed_hierarchical_memory(tool_results)
+            self._trigger_hierarchical_compact()
 
             # 非阻塞 memory recall：工具执行完后检查 prefetch 是否就绪
             if self.memory_recall_task and not self._memory_recall_consumed:

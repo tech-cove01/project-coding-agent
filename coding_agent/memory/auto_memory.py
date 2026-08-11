@@ -436,7 +436,118 @@ class MemoryManager:
         except Exception:
             return
 
+        # 解析 LLM 输出的记忆块并持久化到记忆文件（此前只收集不保存，导致自动记忆从未真正落盘）
+        self._persist_collected_memories(collected)
+
         self._last_extraction_msg_count = len(conversation.history)
+
+    def _persist_collected_memories(self, collected: str) -> None:
+        """解析 LLM 提取的记忆块并写入记忆文件。
+
+        LLM 的输出可能是 0~N 个带 frontmatter 的记忆块（形如
+        ``---\\nname: x\\ntype: project\\n---\\n内容``）。逐个解析：
+        - 跳过「无需记忆」等空标记
+        - 按 type 路由到用户级（user/feedback）或项目级（project/reference）目录
+        - 写入独立 ``{name}.md``，并在同目录 ``MEMORY.md`` 追加索引行
+        """
+        if not collected or not collected.strip():
+            return
+        if "无需记忆" in collected or "no memory" in collected.lower():
+            return
+
+        for block in self._split_memory_blocks(collected):
+            mf = parse_frontmatter(block)
+            body = self._strip_frontmatter(block).strip()
+            if not mf.name or not body:
+                continue
+            # 确定目标目录：user/feedback -> 用户级，project/reference -> 项目级
+            is_user = mf.type in ("user", "feedback")
+            target_dir = self._user_mem_dir if is_user else self._mem_dir
+            if not target_dir:
+                continue
+            ensure_memory_dir_exists(target_dir)
+            dir_path = Path(target_dir)
+            filename = self._safe_filename(mf.name)
+            file_path = dir_path / f"{filename}.md"
+            # 组装完整记忆文件（frontmatter + body）
+            front = (
+                "---\n"
+                f"name: {mf.name}\n"
+                f"description: {mf.description}\n"
+                f"type: {mf.type or ('user' if is_user else 'project')}\n"
+                "---\n\n"
+            )
+            try:
+                file_path.write_text(front + body + "\n", encoding="utf-8")
+                self._append_index_entry(dir_path, mf.name, filename, mf.description)
+            except OSError:
+                continue
+
+    @staticmethod
+    def _split_memory_blocks(text: str) -> list[str]:
+        """把 LLM 输出切分为多个独立记忆块。
+
+        每个记忆块形如：``---\\nname: ...\\ntype: ...\\n---\\n正文``，
+        即以 ``---`` 开头、以 ``---`` 结束的 frontmatter，后接正文。
+        用状态机正确配对分隔符，避免把完整 frontmatter 从中间切开。
+        """
+        lines = text.split("\n")
+        blocks: list[str] = []
+        i = 0
+        n = len(lines)
+        while i < n:
+            # 找到一个 frontmatter 起始分隔符
+            if lines[i].strip() != "---":
+                i += 1
+                continue
+            # 找配对的结束分隔符
+            j = i + 1
+            while j < n and lines[j].strip() != "---":
+                j += 1
+            if j >= n:
+                break  # 无配对结束符，丢弃
+            # 块 = frontmatter + 正文（正文到下一个 --- 或文本结束）
+            k = j + 1
+            body_end = k
+            while body_end < n and lines[body_end].strip() != "---":
+                body_end += 1
+            block = "\n".join(lines[i:body_end])
+            blocks.append(block)
+            i = body_end
+        # 只保留含 name 的块
+        return [b for b in blocks if "name:" in b]
+
+    @staticmethod
+    def _strip_frontmatter(content: str) -> str:
+        """去掉 frontmatter 段，返回正文。"""
+        lines = content.split("\n")
+        if not lines or lines[0].strip() != "---":
+            return content
+        for i in range(1, len(lines)):
+            if lines[i].strip() == "---":
+                return "\n".join(lines[i + 1:])
+        return content
+
+    @staticmethod
+    def _safe_filename(name: str) -> str:
+        """把记忆名规范化为安全文件名（小写、去特殊字符）。"""
+        import re as _re
+        return _re.sub(r"[^a-z0-9\u4e00-\u9fff]+", "-", name.strip().lower()).strip("-") or "memory"
+
+    def _append_index_entry(self, dir_path: Path, title: str, filename: str, description: str) -> None:
+        """在目录的 MEMORY.md 索引中追加一行。"""
+        ep_path = dir_path / ENTRYPOINT_NAME
+        hook = (description or "").strip()
+        line = f"- [{title}]({filename}.md)" + (f" — {hook}" if hook else "")
+        try:
+            existing = ep_path.read_text(encoding="utf-8") if ep_path.exists() else ""
+            # 幂等：已存在相同文件名则不再追加
+            if f"({filename}.md)" in existing:
+                return
+            new_content = (existing.rstrip() + "\n" if existing.strip() else "") + line + "\n"
+            ep_path.write_text(new_content, encoding="utf-8")
+        except OSError:
+            pass
 
     def clear(self) -> None:
         """清除两个目录中所有 .md 文件（对齐 Go 版 Clear）。"""

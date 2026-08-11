@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 import logging
+import logging.handlers
 import os
 import sys
 import time
@@ -13,16 +14,47 @@ from coding_agent.config import ConfigError, load_config
 from coding_agent.hooks import HookConfigError, HookEngine, load_hooks
 from coding_agent.permissions import PermissionMode
 
+_LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s %(message)s"
+
+
+def _configure_logging() -> None:
+    """配置日志：文件轮转 + 终端输出。
+
+    - 文件 handler：写入 .coding_agent/debug.log，5MB 轮转、保留 3 份，
+      记录 INFO 及以上，不会每次启动覆盖历史。
+    - 终端 handler：只显示 WARNING 及以上（避免刷屏），实时可见错误。
+    返回原 root logger 已有 handler 不做重复添加。
+    """
+    root = logging.getLogger()
+    # 避免重复调用 main() 时叠加 handler
+    root.handlers.clear()
+
+    formatter = logging.Formatter(_LOG_FORMAT)
+
+    # 文件 handler（轮转）
+    file_handler = logging.handlers.RotatingFileHandler(
+        ".coding_agent/debug.log",
+        maxBytes=5 * 1024 * 1024,  # 5MB
+        backupCount=3,
+        encoding="utf-8",
+    )
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(formatter)
+
+    # 终端 handler（只显示 WARNING+）
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.WARNING)
+    console_handler.setFormatter(formatter)
+
+    root.setLevel(logging.INFO)
+    root.addHandler(file_handler)
+    root.addHandler(console_handler)
+
 
 def main() -> None:
     # 先确保 .coding_agent/ 目录存在，否则下面写 debug.log 会因目录不存在而崩溃
     Path(".coding_agent").mkdir(parents=True, exist_ok=True)
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(name)s %(message)s",
-        filename=".coding_agent/debug.log",
-        filemode="w",
-    )
+    _configure_logging()
 
     parser = argparse.ArgumentParser(prog="coding_agent", description="Coding Agent AI coding assistant")
     parser.add_argument(

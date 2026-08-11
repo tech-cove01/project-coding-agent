@@ -20,13 +20,17 @@
 #     LangGraph node 里用 InjectedStore / configurable 注入 store 与 model。
 from __future__ import annotations
 
+import asyncio
 import re
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable
 
-from coding_agent.conversation import Message, estimate_tokens
+from coding_agent.conversation import ConversationManager, Message, estimate_tokens
+
+# LLM 调用回调签名：async (model, prompt) -> str
+LlmCall = Callable[[str, str], Awaitable[str]]
 
 # 与 conversation / context.manager 保持一致的字符/token 比率
 _CHARS_PER_TOKEN = 3.5
@@ -162,17 +166,46 @@ def extract_compress_l1(text: str, entities: list[str]) -> str:
     return "\n".join(lines[:200])  # 截断保护，避免无限增长
 
 
-def summarize_l2(items: list[MemoryItem], llm_call: Callable[[str, str], str]) -> str:
-    """L2 大模型摘要压缩占位（两阶段）。
+# 两阶段摘要的 prompt 模板
+_L2_FILTER_PROMPT = (
+    "下面是一段 Agent 对话历史，请筛选出其中「值得长期保留的关键信息」，"
+    "包括：关键决策、完成的任务、遇到的坑与解决办法、重要的实体/ID/工具名、用户偏好。"
+    "过滤掉：寒暄、无关闲聊、临时状态。只输出筛选后的关键事实清单，每条一行，不要解释。\n\n{content}"
+)
 
-    接入点：
-      - 阶段一 小模型低成本筛选 -> 调用者传入的 llm_call(model="small", prompt=...)
-      - 阶段二 主大模型生成结构化摘要 -> llm_call(model="main", prompt=...)
-    当前占位直接拼接，仅示意接口形态。
+_L2_SUMMARY_PROMPT = (
+    "基于以下筛选出的关键事实，生成一份结构化摘要。要求：\n"
+    "1. 按「决策 / 任务结果 / 经验教训 / 关键实体」分段组织；\n"
+    "2. 保留所有实体与 ID；\n"
+    "3. 语言简洁、信息密度高，用于长期记忆；\n"
+    "4. 不要包含寒暄或流程性描述。\n\n{content}"
+)
+
+
+async def summarize_l2(items: list[MemoryItem], llm_call: LlmCall | None) -> str:
+    """L2 两阶段大模型摘要压缩。
+
+    阶段一（小模型，低成本）：从原始历史中筛选出值得保留的关键事实，丢掉噪音。
+    阶段二（主模型）：对筛选结果生成结构化、可长期复用的摘要。
+
+    llm_call 签名为 ``async (model: str, prompt: str) -> str``；model 传
+    ``"small"`` / ``"main"`` 由调用方决定路由到哪个模型。若未注入 llm_call，
+    退化为拼接（不产生真正的摘要，但保证调用方安全）。
     """
-    # TODO: 实现两阶段（小模型筛选内容 -> 主模型生成结构化摘要）。
-    joined = "\n".join(it.compressed for it in items)
-    return llm_call("main", f"请对以下内容生成结构化摘要（保留所有实体）：\n{joined}")
+    joined = "\n".join(it.compressed for it in items if it.compressed)
+    if not llm_call:
+        return joined[:4000]
+
+    # 阶段一：小模型低成本筛选关键事实
+    filtered = await llm_call("small", _L2_FILTER_PROMPT.format(content=joined))
+    filtered = (filtered or "").strip()
+    if not filtered:
+        # 小模型什么都没筛出来，兜底直接用原文（防止 L2 丢内容）
+        filtered = joined[:4000]
+
+    # 阶段二：主模型生成结构化摘要
+    summary = await llm_call("main", _L2_SUMMARY_PROMPT.format(content=filtered))
+    return (summary or "").strip() or filtered
 
 
 def offload_l3_vector(item: MemoryItem, vector_store: Any) -> str:
@@ -211,8 +244,8 @@ class HierarchicalMemory:
     # 外部依赖（LangGraph 中通过 configurable / InjectedStore 注入，不进 checkpoint）
     # 向量库句柄；None 时 L3 卸载退化为仅打标，不真正落库。
     vector_store: Any = None
-    # LLM 调用：signuture 为 (model: str, prompt: str) -> str
-    llm_call: Callable[[str, str], str] | None = None
+    # LLM 调用：signature 为 async (model: str, prompt: str) -> str
+    llm_call: LlmCall | None = None
 
     # ---------- token 统计 ----------
     def in_context_tokens(self) -> int:
@@ -245,7 +278,7 @@ class HierarchicalMemory:
         return item
 
     # ---------- 核心入口：压缩判定与执行 ----------
-    def compress_memory(self, signal: BreakpointSignal) -> dict[str, Any]:
+    async def compress_memory(self, signal: BreakpointSignal) -> dict[str, Any]:
         """compress_memory 核心入口，完整实现双策略触发判断。
 
         返回本次压缩动作的报告（供日志/可观测性使用）。
@@ -296,7 +329,7 @@ class HierarchicalMemory:
                 report["actions"].append({"id": item.id, "level": "L1"})
 
             elif target == MemoryLevel.L2:
-                self._do_l2(item, report)
+                await self._do_l2(item, report)
 
             elif target == MemoryLevel.L3:
                 self._do_l3(item, report)
@@ -306,7 +339,7 @@ class HierarchicalMemory:
         return report
 
     # ---- L2：两阶段摘要 + 净收益校验 ----
-    def _do_l2(self, item: MemoryItem, report: dict[str, Any]) -> None:
+    async def _do_l2(self, item: MemoryItem, report: dict[str, Any]) -> None:
         if self.llm_call is None:
             # 无 LLM 注入时退化为直接置层（占位，不真正摘要）
             item.level = MemoryLevel.L2
@@ -314,7 +347,7 @@ class HierarchicalMemory:
             return
 
         before_tokens = item.tokens
-        summary = summarize_l2([item], self.llm_call)
+        summary = await summarize_l2([item], self.llm_call)
         # 估算本次压缩调用的 LLM 消耗 token（占位：按输入+输出字数估算）
         call_cost = _estimate_tokens_text(item.original) + _estimate_tokens_text(summary)
 
@@ -378,7 +411,7 @@ def render_context(memory: HierarchicalMemory) -> list[Message]:
 # ===========================================================================
 
 
-def _demo_llm_call(model: str, prompt: str) -> str:
+async def _demo_llm_call(model: str, prompt: str) -> str:
     """示例 LLM 桩：真实场景替换为智谱/OpenAI 等流式调用。"""
     return f"[summary by {model}] " + prompt[:80]
 
@@ -400,17 +433,20 @@ if __name__ == "__main__":
             has_dependency=(i < 3),           # 前 3 条有依赖，禁止 L3
         )
 
-    print("初始 in_context_tokens:", mem.in_context_tokens())
-    print("usage_ratio:", round(mem.usage_ratio(), 3))
+    async def _demo() -> None:
+        print("初始 in_context_tokens:", mem.in_context_tokens())
+        print("usage_ratio:", round(mem.usage_ratio(), 3))
 
-    # 演示：在「工具结束」安全断点触发压缩
-    rep = mem.compress_memory(BreakpointSignal.TOOL_END)
-    print("压缩报告:", rep)
+        # 演示：在「工具结束」安全断点触发压缩
+        rep = await mem.compress_memory(BreakpointSignal.TOOL_END)
+        print("压缩报告:", rep)
 
-    # 演示：推理中途触发 -> 应被时机约束拦截
-    rep2 = mem.compress_memory(BreakpointSignal.MID_REASONING)
-    print("中途触发报告:", rep2)
+        # 演示：推理中途触发 -> 应被时机约束拦截
+        rep2 = await mem.compress_memory(BreakpointSignal.MID_REASONING)
+        print("中途触发报告:", rep2)
 
-    # 演示：渲染回上下文
-    ctx = render_context(mem)
-    print("上下文片段数:", len(ctx))
+        # 演示：渲染回上下文
+        ctx = render_context(mem)
+        print("上下文片段数:", len(ctx))
+
+    asyncio.run(_demo())

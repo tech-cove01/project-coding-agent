@@ -92,5 +92,6 @@ uv run python -m benchmarks.run_all
 | `bench_mcp_lazy` | 否（纯确定性） | MCP 延迟加载避免注入的 schema token 占比 |
 | `bench_compact_recall` | 是 | 摘要对埋点 gold facts 的召回率 |
 | `bench_parallel` | 是 | 多 worker 并行 vs 串行加速比 |
+| `runner` | 是 | **自进化闭环**：端到端真实任务回归，失败自动进回归集 |
 
 详细说明见 [`benchmarks/README.md`](benchmarks/README.md)。

@@ -23,6 +23,7 @@ _BENCH_SCRIPTS = {
     "mcp": ("bench_mcp_lazy", "MCP 延迟加载 token 节省（纯确定性）"),
     "compact": ("bench_compact_recall", "上下文压缩召回率（需真实 LLM）"),
     "parallel": ("bench_parallel", "多 Agent 并行 vs 串行（需真实 LLM）"),
+    "selfevolve": ("runner", "端到端真实任务回归（需真实 LLM）"),
 }
 
 

@@ -230,25 +230,25 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 <body>
 <div id="login-overlay">
   <div class="login-box">
-    <div class="login-title">🔐 Coding Agent Remote</div>
-    <div class="login-sub">Enter the access token to continue</div>
-    <input id="login-token" type="password" placeholder="Access token" autocomplete="off" />
+    <div class="login-title">🔐 Coding Agent 远程控制</div>
+    <div class="login-sub">请输入访问令牌以继续</div>
+    <input id="login-token" type="password" placeholder="访问令牌" autocomplete="off" />
     <div id="login-error" class="login-error"></div>
-    <button id="login-btn">Login</button>
+    <button id="login-btn">登录</button>
   </div>
 </div>
 <div id="app" style="display:none;">
   <div id="status-bar">
-    <span class="brand">⚡ Coding Agent Remote</span>
+    <span class="brand">⚡ Coding Agent 远程控制</span>
     <div class="info">
-      <span id="conn-status"><span class="dot disconnected"></span>Connecting...</span>
+      <span id="conn-status"><span class="dot disconnected"></span>连接中...</span>
       <span id="token-info"></span>
-      <label class="perm-label" title="Permission mode">🔒
+      <label class="perm-label" title="权限模式">🔒
         <select id="perm-select">
-          <option value="default">default</option>
-          <option value="acceptEdits">acceptEdits</option>
-          <option value="plan">plan</option>
-          <option value="bypassPermissions">bypassPermissions</option>
+          <option value="default">默认模式</option>
+          <option value="acceptEdits">自动接受编辑</option>
+          <option value="plan">计划模式</option>
+          <option value="bypassPermissions">跳过权限检查</option>
         </select>
       </label>
     </div>
@@ -256,8 +256,8 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   <div id="messages"></div>
   <div id="input-area" style="position:relative;">
     <div id="slash-menu"></div>
-    <textarea id="input" placeholder="Send a message... (Enter to send, Shift+Enter for newline)" rows="1"></textarea>
-    <button id="send-btn">Send</button>
+    <textarea id="input" placeholder="输入消息... (Enter 发送，Shift+Enter 换行)" rows="1"></textarea>
+    <button id="send-btn">发送</button>
   </div>
 </div>
 
@@ -315,7 +315,7 @@ function connect() {
   ws = new WebSocket(proto + '//' + location.host + '/ws');
 
   ws.onopen = () => {
-    connStatus.innerHTML = '<span class="dot connected"></span>Connected';
+    connStatus.innerHTML = '<span class="dot connected"></span>已连接';
     // 连接建立后立即尝试登录（使用已保存的 token；未登录时用空 token 触发登录流程）
     sendLogin(savedToken);
     // 每 10 秒发一次应用层 ping，防止连接被中间件/浏览器回收
@@ -327,7 +327,7 @@ function connect() {
   };
 
   ws.onclose = () => {
-    connStatus.innerHTML = '<span class="dot disconnected"></span>Reconnecting...';
+    connStatus.innerHTML = '<span class="dot disconnected"></span>重连中...';
     if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
     setTimeout(connect, 3000);
   };
@@ -350,7 +350,7 @@ function sendLogin(token) {
 
 function onLoginSubmit() {
   const token = (loginToken.value || '').trim();
-  if (!token) { loginError.textContent = 'Please enter a token'; return; }
+  if (!token) { loginError.textContent = '请输入访问令牌'; return; }
   loginError.textContent = '';
   savedToken = token;
   try { localStorage.setItem('remote_token', token); } catch(e) {}
@@ -373,7 +373,7 @@ function onAuthError(message) {
   authenticated = false;
   loginOverlay.style.display = 'flex';
   appEl.style.display = 'none';
-  loginError.textContent = message || 'Invalid token';
+  loginError.textContent = message || '令牌无效';
 }
 
 function handleMessage(msg) {
@@ -382,14 +382,14 @@ function handleMessage(msg) {
       onAuthOk(msg.data ? msg.data.mode : 'default');
       break;
     case 'auth_error':
-      onAuthError(msg.data ? msg.data.message : 'Invalid token');
+      onAuthError(msg.data ? msg.data.message : '令牌无效');
       break;
     case 'permission_mode_changed':
       if (permSelect && msg.data && msg.data.mode) permSelect.value = msg.data.mode;
       break;
     case 'connected':
       if (!connectedOnce) {
-        addSystem('Session: ' + msg.data.session + ' | CWD: ' + msg.data.cwd);
+        addSystem('会话: ' + msg.data.session + ' | 工作目录: ' + msg.data.cwd);
         connectedOnce = true;
       }
       break;
@@ -404,7 +404,7 @@ function handleMessage(msg) {
 
     case 'clear':
       messagesEl.innerHTML = '';
-      addSystem('Conversation cleared.');
+      addSystem('对话已清空。');
       break;
 
     case 'command_done':
@@ -424,7 +424,7 @@ function handleMessage(msg) {
 
     case 'stream_text':
       if (currentThinkingEl) {
-        currentThinkingEl.querySelector('.thinking-header span:last-child').textContent = '💭 Thought';
+        currentThinkingEl.querySelector('.thinking-header span:last-child').textContent = '💭 思考';
         currentThinkingEl = null;
         currentThinkingText = '';
       }
@@ -455,7 +455,7 @@ function handleMessage(msg) {
 
     case 'tool_use':
       if (currentThinkingEl) {
-        currentThinkingEl.querySelector('.thinking-header span:last-child').textContent = '💭 Thought';
+        currentThinkingEl.querySelector('.thinking-header span:last-child').textContent = '💭 思考';
         currentThinkingEl = null;
         currentThinkingText = '';
       }
@@ -495,7 +495,7 @@ function handleMessage(msg) {
       break;
 
     case 'usage':
-      tokenInfo.textContent = 'In: ' + formatTokens(msg.data.inputTokens) + ' | Out: ' + formatTokens(msg.data.outputTokens);
+      tokenInfo.textContent = '输入: ' + formatTokens(msg.data.inputTokens) + ' 词元 | 输出: ' + formatTokens(msg.data.outputTokens) + ' 词元';
       break;
 
     case 'error':
@@ -509,7 +509,7 @@ function handleMessage(msg) {
       break;
 
     case 'retry':
-      addSystem('↻ Retrying: ' + msg.data.reason);
+      addSystem('↻ 重试中: ' + msg.data.reason);
       break;
   }
 }
@@ -565,7 +565,7 @@ function updateAssistant(el, text, isStreaming) {
     let html = '<div class="thinking-block">' +
       '<div class="thinking-header" onclick="toggleThinking(this)">' +
         '<span class="icon">▶</span>' +
-        '<span>💭 Thinking...</span>' +
+        '<span>💭 思考中...</span>' +
       '</div>' +
       '<div class="thinking-body">' + escapeHtml(thinkBody) + '</div>' +
     '</div>';
@@ -585,7 +585,7 @@ function addThinking() {
   div.innerHTML =
     '<div class="thinking-header" onclick="toggleThinking(this)">' +
       '<span class="icon">▶</span>' +
-      '<span>💭 Thinking...</span>' +
+      '<span>💭 思考中...</span>' +
     '</div>' +
     '<div class="thinking-body"></div>';
   messagesEl.appendChild(div);
@@ -635,10 +635,10 @@ function addToolUse(data) {
       '<span class="icon">▶</span>' +
       '<span class="name">' + escapeHtml(data.toolName) + '</span>' +
       (argsPreview ? '<span style="color:var(--text-dim);font-size:12px;margin-left:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:500px;">' + escapeHtml(argsPreview) + '</span>' : '') +
-      '<span class="status loading">⏳ running...</span>' +
+      '<span class="status loading">⏳ 运行中...</span>' +
     '</div>' +
     '<div class="tool-body">' +
-      (argsStr ? '<div style="color:var(--blue);margin-bottom:8px;">Args:\n' + escapeHtml(argsStr) + '</div>' : '') +
+      (argsStr ? '<div style="color:var(--blue);margin-bottom:8px;">参数:\n' + escapeHtml(argsStr) + '</div>' : '') +
       '<div class="tool-output"></div>' +
     '</div>';
 
@@ -661,7 +661,7 @@ function updateToolResult(data) {
     }
     const outputEl = div.querySelector('.tool-output');
     if (data.output) {
-      const truncated = data.output.length > 5000 ? data.output.substring(0, 5000) + '\n... (truncated)' : data.output;
+      const truncated = data.output.length > 5000 ? data.output.substring(0, 5000) + '\n... (已截断)' : data.output;
       outputEl.textContent = truncated;
     }
     delete toolElements[key];
@@ -696,12 +696,12 @@ function addPermissionDialog(data) {
   div.className = 'perm-dialog';
   div.id = 'perm-' + data.id;
   div.innerHTML =
-    '<div class="title">🔒 Permission Required: ' + escapeHtml(data.toolName) + '</div>' +
+    '<div class="title">🔒 需要权限: ' + escapeHtml(data.toolName) + '</div>' +
     '<div class="desc">' + escapeHtml(data.description) + '</div>' +
     '<div class="actions">' +
-      '<button class="btn-allow" onclick="respondPerm(\'' + data.id + '\', \'allow\')">Allow</button>' +
-      '<button class="btn-always" onclick="respondPerm(\'' + data.id + '\', \'allowAlways\')">Allow Always</button>' +
-      '<button class="btn-deny" onclick="respondPerm(\'' + data.id + '\', \'deny\')">Deny</button>' +
+      '<button class="btn-allow" onclick="respondPerm(\'' + data.id + '\', \'allow\')">允许</button>' +
+      '<button class="btn-always" onclick="respondPerm(\'' + data.id + '\', \'allowAlways\')">始终允许</button>' +
+      '<button class="btn-deny" onclick="respondPerm(\'' + data.id + '\', \'deny\')">拒绝</button>' +
     '</div>';
   messagesEl.appendChild(div);
   scrollToBottom();
@@ -711,7 +711,8 @@ function respondPerm(id, response) {
   ws.send(JSON.stringify({ type: 'permission_response', data: { id, response } }));
   const el = document.getElementById('perm-' + id);
   if (el) {
-    el.innerHTML = '<div style="color:var(--text-dim)">🔒 Permission: ' + response + '</div>';
+    const label = { allow: '允许', allowAlways: '始终允许', deny: '拒绝' }[response] || response;
+    el.innerHTML = '<div style="color:var(--text-dim)">🔒 权限: ' + label + '</div>';
   }
 }
 
@@ -721,7 +722,7 @@ function addAskUserDialog(data) {
   div.className = 'perm-dialog';
   div.id = 'ask-' + data.id;
 
-  let html = '<div class="title">❓ Question</div>';
+  let html = '<div class="title">❓ 问题</div>';
   const questions = data.questions || [];
   questions.forEach((q, qi) => {
     html += '<div style="margin-bottom:12px;">';
@@ -739,12 +740,12 @@ function addAskUserDialog(data) {
     // Other 选项
     html += '<label style="display:block;margin:4px 0;cursor:pointer;">' +
       '<input type="radio" name="ask_' + data.id + '_' + qi + '" value="__other__"> ' +
-      '<span style="color:var(--text-dim)">Other: </span>' +
+      '<span style="color:var(--text-dim)">其他: </span>' +
       '<input type="text" id="ask_other_' + data.id + '_' + qi + '" style="background:var(--bg-input);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-family:inherit;font-size:13px;width:300px;">' +
       '</label>';
     html += '</div>';
   });
-  html += '<div class="actions"><button class="btn-allow" onclick="respondAsk(\'' + data.id + '\',' + questions.length + ')">Submit</button></div>';
+  html += '<div class="actions"><button class="btn-allow" onclick="respondAsk(\'' + data.id + '\',' + questions.length + ')">提交</button></div>';
 
   div.innerHTML = html;
   messagesEl.appendChild(div);

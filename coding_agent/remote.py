@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 import os
+import secrets
 import time
 from pathlib import Path
 from typing import Any
@@ -50,6 +51,7 @@ class RemoteServer:
         hook_engine: HookEngine | None = None,
         addr: str = "0.0.0.0",
         port: int = 18888,
+        auth_token: str | None = None,
     ) -> None:
         self.providers = providers
         self._mcp_server_configs = mcp_servers or []
@@ -57,8 +59,22 @@ class RemoteServer:
         self.addr = addr
         self.port = port
 
+        # 远程访问鉴权 token：
+        # - 显式传入的 auth_token 优先
+        # - 否则读环境变量 CODING_AGENT_REMOTE_TOKEN
+        # - 都没有则自动生成一个随机 token（启动时打印，重启后失效）
+        if auth_token:
+            self.auth_token = auth_token
+        else:
+            self.auth_token = os.environ.get("CODING_AGENT_REMOTE_TOKEN", "")
+        if not self.auth_token:
+            self.auth_token = secrets.token_urlsafe(24)
+
         # WebSocket 连接池（支持多客户端广播）
         self._connections: set[ServerConnection] = set()
+
+        # 权限检查器（_init_agent 时赋值，用于 remote 端切换权限模式）
+        self.permission_checker: PermissionChecker | None = None
 
         # Agent 相关状态
         self.agent: Agent | None = None
@@ -99,7 +115,8 @@ class RemoteServer:
         # 初始化 MCP（如果有配置）
         await self._init_mcp()
 
-        print(f"\n  Remote UI: http://localhost:{self.port}\n")
+        print(f"\n  Remote UI: http://localhost:{self.port}")
+        print(f"  Access token: {self.auth_token}\n")
 
         # websockets 的 serve 支持 process_request 回调来处理普通 HTTP
         async with websockets.serve(
@@ -139,7 +156,19 @@ class RemoteServer:
     # ------------------------------------------------------------------
 
     async def _ws_handler(self, websocket: ServerConnection) -> None:
-        """处理单个 WebSocket 连接的全生命周期。"""
+        """处理单个 WebSocket 连接的全生命周期。
+
+        连接建立后必须先通过登录鉴权（发送 type=login），校验通过前
+        忽略一切其他消息，也不广播任何会话信息。
+        """
+        # 登录鉴权：校验通过后才加入连接池、推送会话信息
+        if not await self._authenticate(websocket):
+            # 鉴权失败：关闭连接，让客户端重连并重试登录
+            try:
+                await websocket.close(code=4401, reason="unauthorized")
+            except Exception:
+                pass
+            return
         self._connections.add(websocket)
         try:
             # 连接建立时推送会话信息
@@ -176,6 +205,9 @@ class RemoteServer:
                 elif msg_type == "permission_response":
                     self._handle_permission_response(data)
 
+                elif msg_type == "permission_mode":
+                    await self._handle_permission_mode(data)
+
                 elif msg_type == "cancel":
                     if self._cancel_event is not None:
                         self._cancel_event.set()
@@ -188,6 +220,78 @@ class RemoteServer:
             pass
         finally:
             self._connections.discard(websocket)
+
+    async def _authenticate(self, websocket: ServerConnection) -> bool:
+        """校验客户端登录 token。
+
+        客户端连接后必须在超时内发送一条 ``{type:"login", data:{token}}``，
+        校验通过返回 True；否则关闭连接返回 False。
+        """
+        try:
+            async for raw in websocket:
+                try:
+                    msg = json.loads(raw)
+                except json.JSONDecodeError:
+                    await self._send(websocket, {
+                        "type": "auth_error",
+                        "data": {"message": "invalid message format"},
+                    })
+                    return False
+
+                if msg.get("type") == "login":
+                    token = (msg.get("data") or {}).get("token", "")
+                    if token and secrets.compare_digest(token, self.auth_token):
+                        await self._send(websocket, {
+                            "type": "auth_ok",
+                            "data": {"mode": self._current_permission_mode()},
+                        })
+                        return True
+                    await self._send(websocket, {
+                        "type": "auth_error",
+                        "data": {"message": "invalid token"},
+                    })
+                    return False
+
+                # 鉴权通过前不接受其他消息类型
+                await self._send(websocket, {
+                    "type": "auth_error",
+                    "data": {"message": "please login first"},
+                })
+                return False
+
+        except websockets.ConnectionClosed:
+            return False
+
+    async def _send(self, websocket: ServerConnection, msg: dict) -> None:
+        """向单个连接发送消息（不广播）。"""
+        try:
+            await websocket.send(json.dumps(msg))
+        except websockets.ConnectionClosed:
+            pass
+
+    async def _handle_permission_mode(self, data: dict[str, Any]) -> None:
+        """处理来自 Web UI 的权限模式切换请求。"""
+        mode_str = data.get("mode", "")
+        mode_map = {
+            "default": PermissionMode.DEFAULT,
+            "acceptEdits": PermissionMode.ACCEPT_EDITS,
+            "plan": PermissionMode.PLAN,
+            "bypassPermissions": PermissionMode.BYPASS,
+        }
+        mode = mode_map.get(mode_str)
+        if mode is None or self.agent is None:
+            return
+        self.agent.set_permission_mode(mode)
+        log.info("Permission mode set to %s via remote", mode.value)
+        await self._broadcast({
+            "type": "permission_mode_changed",
+            "data": {"mode": mode.value},
+        })
+
+    def _current_permission_mode(self) -> str:
+        if self.agent is not None and self.permission_checker is not None:
+            return self.permission_checker.mode.value
+        return PermissionMode.DEFAULT.value
 
     # ------------------------------------------------------------------
     # Agent 初始化（复刻 TUI 的 _select_provider 流程）
@@ -210,6 +314,7 @@ class RemoteServer:
             ),
             mode=PermissionMode.DEFAULT,
         )
+        self.permission_checker = checker
 
         # 加载自定义指令和记忆
         instructions = load_instructions(work_dir)

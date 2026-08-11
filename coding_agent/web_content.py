@@ -191,33 +191,6 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   border: 1px solid var(--border); padding: 6px 12px; text-align: left; }
 .msg-assistant .content th { background: var(--bg-surface); }
 
-/* 登录覆盖层 */
-#login-overlay {
-  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-  background: var(--bg); display: flex; align-items: center; justify-content: center;
-  z-index: 1000;
-}
-.login-box {
-  background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px;
-  padding: 32px; width: 320px; text-align: center;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
-}
-.login-title { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
-.login-sub { color: var(--text-dim); font-size: 13px; margin-bottom: 20px; }
-#login-token {
-  width: 100%; box-sizing: border-box; padding: 10px 12px;
-  background: var(--bg-input); color: var(--text); border: 1px solid var(--border);
-  border-radius: 4px; font-size: 14px; margin-bottom: 12px; outline: none;
-}
-#login-token:focus { border-color: var(--accent); }
-#login-btn {
-  width: 100%; padding: 10px; border: none; border-radius: 4px;
-  background: var(--accent); color: #fff; font-size: 14px; font-weight: 600;
-  cursor: pointer;
-}
-#login-btn:hover { filter: brightness(1.1); }
-.login-error { color: var(--red); font-size: 13px; min-height: 18px; margin-bottom: 8px; }
-
 /* 权限模式下拉 */
 .perm-label { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-dim); margin-left: 8px; }
 #perm-select {
@@ -228,16 +201,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 </style>
 </head>
 <body>
-<div id="login-overlay">
-  <div class="login-box">
-    <div class="login-title">🔐 Coding Agent 远程控制</div>
-    <div class="login-sub">请输入访问令牌以继续</div>
-    <input id="login-token" type="password" placeholder="访问令牌" autocomplete="off" />
-    <div id="login-error" class="login-error"></div>
-    <button id="login-btn">登录</button>
-  </div>
-</div>
-<div id="app" style="display:none;">
+<div id="app">
   <div id="status-bar">
     <span class="brand">⚡ Coding Agent 远程控制</span>
     <div class="info">
@@ -269,15 +233,7 @@ const sendBtn = document.getElementById('send-btn');
 const connStatus = document.getElementById('conn-status');
 const tokenInfo = document.getElementById('token-info');
 const slashMenu = document.getElementById('slash-menu');
-const loginOverlay = document.getElementById('login-overlay');
-const loginToken = document.getElementById('login-token');
-const loginBtn = document.getElementById('login-btn');
-const loginError = document.getElementById('login-error');
-const appEl = document.getElementById('app');
 const permSelect = document.getElementById('perm-select');
-let authenticated = false;
-let savedToken = '';
-try { savedToken = localStorage.getItem('remote_token') || ''; } catch(e) {}
 
 let ws = null;
 let streaming = false;
@@ -316,8 +272,6 @@ function connect() {
 
   ws.onopen = () => {
     connStatus.innerHTML = '<span class="dot connected"></span>已连接';
-    // 连接建立后立即尝试登录（使用已保存的 token；未登录时用空 token 触发登录流程）
-    sendLogin(savedToken);
     // 每 10 秒发一次应用层 ping，防止连接被中间件/浏览器回收
     pingTimer = setInterval(() => {
       if (ws && ws.readyState === WebSocket.OPEN) {
@@ -340,50 +294,8 @@ function connect() {
   };
 }
 
-// ---------- 登录鉴权 ----------
-
-function sendLogin(token) {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: 'login', data: { token: token || '' } }));
-  }
-}
-
-function onLoginSubmit() {
-  const token = (loginToken.value || '').trim();
-  if (!token) { loginError.textContent = '请输入访问令牌'; return; }
-  loginError.textContent = '';
-  savedToken = token;
-  try { localStorage.setItem('remote_token', token); } catch(e) {}
-  // 确保 WS 已连接后发送登录
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    sendLogin(token);
-  } else {
-    connect();
-  }
-}
-
-function onAuthOk(mode) {
-  authenticated = true;
-  loginOverlay.style.display = 'none';
-  appEl.style.display = 'flex';
-  if (mode && permSelect) permSelect.value = mode;
-}
-
-function onAuthError(message) {
-  authenticated = false;
-  loginOverlay.style.display = 'flex';
-  appEl.style.display = 'none';
-  loginError.textContent = message || '令牌无效';
-}
-
 function handleMessage(msg) {
   switch (msg.type) {
-    case 'auth_ok':
-      onAuthOk(msg.data ? msg.data.mode : 'default');
-      break;
-    case 'auth_error':
-      onAuthError(msg.data ? msg.data.message : '令牌无效');
-      break;
     case 'permission_mode_changed':
       if (permSelect && msg.data && msg.data.mode) permSelect.value = msg.data.mode;
       break;
@@ -904,13 +816,9 @@ inputEl.addEventListener('input', () => {
 
 sendBtn.addEventListener('click', sendMessage);
 
-// 登录事件
-loginBtn.addEventListener('click', onLoginSubmit);
-loginToken.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); onLoginSubmit(); } });
-
 // 权限模式切换
 permSelect.addEventListener('change', () => {
-  if (ws && ws.readyState === WebSocket.OPEN && authenticated) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: 'permission_mode', data: { mode: permSelect.value } }));
   }
 });

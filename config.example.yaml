@@ -1,0 +1,91 @@
+# =====================================================================
+# Coding Agent 配置模板
+# ---------------------------------------------------------------------
+# 使用方法：
+#   1. 复制本文件为 .coding_agent/config.yaml（项目级）
+#      或 ~/.coding_agent/config.yaml（用户级，跨项目）
+#   2. 填写你的模型提供商 API key
+#   3. 运行 python -m coding_agent
+#
+# 支持 ${ENV_VAR} 环境变量引用（例如 ${GLM_API_KEY}）。
+# 如果某个 provider 不写 api_key，会自动从环境变量读取：
+#   - openai / openai-compat  -> OPENAI_API_KEY
+#   - anthropic               -> ANTHROPIC_API_KEY
+#
+# 项目也支持分层配置合并：同时存在 config.yaml 与 config.local.yaml
+# 时，config.local.yaml 会覆盖 config.yaml 的对应字段（适合放个人密钥，
+# 而不提交到 git）。
+# =====================================================================
+
+providers:
+  # 智谱 GLM（OpenAI 兼容接口）
+  - name: glm
+    protocol: openai-compat      # 智谱走 Chat Completions，用 openai-compat
+    base_url: https://open.bigmodel.cn/api/paas/v4
+    api_key: "${GLM_API_KEY}"    # 替换为你的 key，或用环境变量
+    model: glm-4-flash           # 小写模型名，如 glm-4-flash、glm-4-plus
+    thinking: true               # 是否启用思维链
+
+  # OpenAI 官方
+  # - name: openai-official
+  #   protocol: openai           # OpenAI 官方用 openai（Responses API）
+  #   base_url: https://api.openai.com/v1
+  #   api_key: "${OPENAI_API_KEY}"
+  #   model: gpt-4o
+
+  # Anthropic
+  # - name: claude
+  #   protocol: anthropic
+  #   api_key: "${ANTHROPIC_API_KEY}"
+  #   model: claude-sonnet-4-20250514
+
+# 默认权限模式
+# 可选：default / acceptEdits / plan / bypassPermissions
+#   default           读放行，写与命令需确认（最安全）
+#   acceptEdits       写文件放行，命令仍需确认
+#   plan              只做规划，禁止修改与执行
+#   bypassPermissions 全部放行（危险，慎用）
+permission_mode: default
+
+# ---------------------------------------------------------------------
+# MCP 服务器（默认关闭）
+#
+# stdio 方式（需要 node/npx 环境）：
+# mcp_servers:
+#   - name: context7
+#     command: npx
+#     args: ["-y", "@upstash/context7-mcp"]
+#
+# HTTP 方式（2025-03-26 规范，设置了 url 时默认用 http 传输）：
+#   - name: my-http-mcp
+#     url: https://example.com/mcp
+#     transport: http    # 可选；"http"（默认）或 "sse"
+#     headers:
+#       Authorization: "Bearer ${MY_TOKEN}"
+# ---------------------------------------------------------------------
+
+# 子 agent 模式（teams/ 多 agent 协作）
+# 可选：""（默认）/ in-process
+#   in-process 表示子 agent 在同一进程内运行
+teammate_mode: ""
+
+# 启用 fork（子 agent 复用会话）
+# enable_fork: true
+
+# 启用独立验证 agent（实现完成后自动做独立审查）
+# enable_verification_agent: true
+
+# 启用 coordinator 模式（规划-并行研究-综合-实现-独立验证）
+# enable_coordinator_mode: true
+
+# 自定义钩子（hooks/ 模块，事件驱动脚本）
+# hooks:
+#   - name: pre-tool
+#     event: PreToolUse
+#     command: "python scripts/pre_tool.py"
+
+# 工作树（worktree/ 模块）
+# worktree:
+#   symlink_directories: ["node_modules", ".venv", "vendor"]
+#   stale_cleanup_interval: 3600
+#   stale_cutoff_hours: 24

@@ -7,7 +7,7 @@ from typing import Any, AsyncIterator
 
 import pytest
 
-from .agent import (
+from coding_agent.agent  import (
     Agent,
     ErrorEvent,
     LoopComplete,
@@ -20,12 +20,12 @@ from .agent import (
     UsageEvent,
     partition_tool_calls,
 )
-from .prompts import build_environment_context, build_plan_mode_reminder, build_system_prompt
-from .client import LLMClient
-from .conversation import ConversationManager
-from .serialization import build_anthropic_messages
-from .tools import create_default_registry
-from .tools.base import (
+from coding_agent.prompts  import build_environment_context, build_plan_mode_reminder, build_system_prompt
+from coding_agent.client  import LLMClient
+from coding_agent.conversation  import ConversationManager
+from coding_agent.serialization  import build_anthropic_messages
+from coding_agent.tools  import create_default_registry
+from coding_agent.tools.base  import (
     StreamEnd,
     StreamEvent,
     TextDelta,
@@ -229,11 +229,11 @@ async def test_stop_cancel():
             tools: list[dict[str, Any]] | None = None,
         ) -> AsyncIterator[StreamEvent]:
             self._call_count += 1
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(0.03)
             yield TextDelta(f"Step {self._call_count}")
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(0.03)
             yield ToolCallComplete(f"t{self._call_count}", "ReadFile", {"file_path": "README.md"})
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(0.03)
             yield StreamEnd("end_turn", input_tokens=10, output_tokens=10)
 
     client = SlowMockClient()
@@ -250,7 +250,11 @@ async def test_stop_cancel():
             events.append(e)
 
     task = asyncio.create_task(run_agent())
-    await asyncio.sleep(0.15)
+    # 轮询等待至少完成一轮，再取消——避免固定 sleep 造成的时序抖动
+    for _ in range(100):
+        await asyncio.sleep(0.01)
+        if any(isinstance(e, TurnComplete) for e in events):
+            break
     task.cancel()
     try:
         await task
@@ -394,7 +398,7 @@ async def test_token_usage_accumulates():
 @pytest.mark.asyncio
 async def test_plan_mode():
     """通过 permission_mode 切换 plan 模式。"""
-    from .permissions import PermissionMode
+    from coding_agent.permissions import PermissionMode
 
     registry = create_default_registry()
     agent = Agent(MockLLMClient([]), registry, "anthropic")
@@ -414,7 +418,7 @@ async def test_plan_mode():
 async def test_plan_mode_denied_tool_returns_error():
     """在 plan 模式下，写入类工具需要审批（effect=ask）；当用户
     拒绝时，工具返回一个错误结果，而不会真正执行。"""
-    from .permissions import (
+    from coding_agent.permissions import (
         DangerousCommandDetector,
         PathSandbox,
         PermissionChecker,
@@ -460,7 +464,7 @@ async def test_plan_mode_denied_tool_returns_error():
 
 def test_partition_tool_calls():
     """分批逻辑会把可并发执行的调用归到同一组。"""
-    from .tools.base import ToolCallComplete
+    from coding_agent.tools.base import ToolCallComplete
 
     calls = [
         ToolCallComplete("1", "ReadFile", {}),

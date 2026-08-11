@@ -8,21 +8,21 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from .skills.parser import (
+from coding_agent.skills.parser  import (
     SkillDef,
     SkillParseError,
     parse_frontmatter,
     parse_skill_file,
     substitute_arguments,
 )
-from .skills.loader import SkillLoader
-from .skills.executor import (
+from coding_agent.skills.loader  import SkillLoader
+from coding_agent.skills.executor  import (
     SkillDependencyError,
     SkillExecutor,
     filter_tool_registry,
 )
-from .tools import ToolRegistry
-from .tools.base import Tool, ToolResult
+from coding_agent.tools  import ToolRegistry
+from coding_agent.tools.base  import Tool, ToolResult
 
 # ---------------------------------------------------------------------------
 # 辅助工具
@@ -353,7 +353,7 @@ class TestFilterToolRegistry:
 
 class TestDirectorySkill:
     def test_parse_tool_json(self, tmp_path: Path) -> None:
-        from .skills.directory import parse_tool_json
+        from coding_agent.skills.directory import parse_tool_json
 
         tool_json = tmp_path / "tool.json"
         tool_json.write_text(json.dumps([
@@ -368,7 +368,7 @@ class TestDirectorySkill:
         assert schemas[0]["name"] == "my_tool"
 
     def test_parse_tool_json_single_object(self, tmp_path: Path) -> None:
-        from .skills.directory import parse_tool_json
+        from coding_agent.skills.directory import parse_tool_json
 
         tool_json = tmp_path / "tool.json"
         tool_json.write_text(json.dumps({
@@ -380,7 +380,7 @@ class TestDirectorySkill:
         assert len(schemas) == 1
 
     def test_register_skill_tools(self, tmp_path: Path) -> None:
-        from .skills.directory import register_skill_tools
+        from coding_agent.skills.directory import register_skill_tools
 
         skill_dir = tmp_path / "my-skill"
         skill_dir.mkdir()
@@ -403,7 +403,7 @@ class TestDirectorySkill:
         assert registry.get("my_tool") is not None
 
     def test_register_no_tool_json(self, tmp_path: Path) -> None:
-        from .skills.directory import register_skill_tools
+        from coding_agent.skills.directory import register_skill_tools
 
         registry = ToolRegistry()
         count = register_skill_tools(tmp_path, registry)
@@ -411,7 +411,7 @@ class TestDirectorySkill:
 
     @pytest.mark.asyncio
     async def test_custom_tool_execution(self, tmp_path: Path) -> None:
-        from .skills.directory import register_skill_tools
+        from coding_agent.skills.directory import register_skill_tools
 
         skill_dir = tmp_path / "skill"
         skill_dir.mkdir()
@@ -452,7 +452,7 @@ class TestDirectorySkill:
 class TestLoadSkillTool:
     @pytest.mark.asyncio
     async def test_load_existing_skill(self) -> None:
-        from .tools.load_skill import LoadSkill, LoadSkillParams
+        from coding_agent.tools.load_skill import LoadSkill, LoadSkillParams
 
         tool = LoadSkill()
         loader = MagicMock()
@@ -477,7 +477,7 @@ class TestLoadSkillTool:
 
     @pytest.mark.asyncio
     async def test_load_unknown_skill(self) -> None:
-        from .tools.load_skill import LoadSkill, LoadSkillParams
+        from coding_agent.tools.load_skill import LoadSkill, LoadSkillParams
 
         tool = LoadSkill()
         loader = MagicMock()
@@ -494,7 +494,7 @@ class TestLoadSkillTool:
 
     @pytest.mark.asyncio
     async def test_not_initialized(self) -> None:
-        from .tools.load_skill import LoadSkill, LoadSkillParams
+        from coding_agent.tools.load_skill import LoadSkill, LoadSkillParams
 
         tool = LoadSkill()
         result = await tool.execute(LoadSkillParams(name="test"))
@@ -502,7 +502,7 @@ class TestLoadSkillTool:
         assert "not properly initialized" in result.output
 
     def test_is_system_tool(self) -> None:
-        from .tools.load_skill import LoadSkill
+        from coding_agent.tools.load_skill import LoadSkill
 
         tool = LoadSkill()
         assert tool.is_system_tool is True
@@ -514,7 +514,7 @@ class TestLoadSkillTool:
 
 class TestAgentSkillIntegration:
     def test_env_context_does_not_include_active_skills(self) -> None:
-        from .prompts import build_environment_context
+        from coding_agent.prompts import build_environment_context
 
         env = build_environment_context(
             "/test",
@@ -529,7 +529,7 @@ class TestAgentSkillIntegration:
         agent = MagicMock()
         agent.active_skills = {}
 
-        from .agent import Agent
+        from coding_agent.agent import Agent
 
         real_agent = MagicMock(spec=Agent)
         real_agent.active_skills = {}

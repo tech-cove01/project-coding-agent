@@ -13,32 +13,32 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from .teams.models import (
+from coding_agent.teams.models  import (
     AgentTeam,
     BackendType,
     TeammateInfo,
     resolve_team_dir,
     unique_team_name,
 )
-from .teams.shared_task import SharedTask, SharedTaskStore
-from .teams.mailbox import Mailbox, MailboxMessage, create_message
-from .teams.registry import AgentNameRegistry
-from .teams.backend_detect import BackendDetectionError, detect_backend, detect_pane_backend
-from .teams.coordinator import (
+from coding_agent.teams.shared_task  import SharedTask, SharedTaskStore
+from coding_agent.teams.mailbox  import Mailbox, MailboxMessage, create_message
+from coding_agent.teams.registry  import AgentNameRegistry
+from coding_agent.teams.backend_detect  import BackendDetectionError, detect_backend, detect_pane_backend
+from coding_agent.teams.coordinator  import (
     get_coordinator_system_prompt,
     get_coordinator_user_context,
     is_coordinator_mode,
     match_session_mode,
 )
-from .agents.tool_filter import (
+from coding_agent.agents.tool_filter  import (
     COORDINATOR_MODE_ALLOWED_TOOLS,
     IN_PROCESS_TEAMMATE_ALLOWED_TOOLS,
     TEAMMATE_COORDINATION_TOOLS,
     build_teammate_tools,
     apply_coordinator_filter,
 )
-from .tools import ToolRegistry
-from .tools.base import Tool, ToolResult
+from coding_agent.tools  import ToolRegistry
+from coding_agent.tools.base  import Tool, ToolResult
 
 # =====================================================================
 # 辅助工具
@@ -489,13 +489,13 @@ class TestCoordinatorMode:
 
 class TestConfigExtensions:
     def test_teammate_mode_defaults(self):
-        from .config import AppConfig
+        from coding_agent.config import AppConfig
         cfg = AppConfig(providers=[])
         assert cfg.teammate_mode == ""
         assert cfg.enable_coordinator_mode is False
 
     def test_load_config_with_team_fields(self, tmp_dir):
-        from .config import load_config
+        from coding_agent.config import load_config
         config_path = Path(tmp_dir) / "config.yaml"
         config_path.write_text(
             "providers:\n"
@@ -511,7 +511,7 @@ class TestConfigExtensions:
         assert cfg.enable_coordinator_mode is True
 
     def test_invalid_teammate_mode(self, tmp_dir):
-        from .config import ConfigError, load_config
+        from coding_agent.config import ConfigError, load_config
         config_path = Path(tmp_dir) / "config.yaml"
         config_path.write_text(
             "providers:\n"
@@ -531,8 +531,8 @@ class TestConfigExtensions:
 class TestTranscript:
 
     def test_save_and_load(self, tmp_dir):
-        from .conversation import ConversationManager
-        from .teams.transcript import load_transcript, save_transcript
+        from coding_agent.conversation import ConversationManager
+        from coding_agent.teams.transcript import load_transcript, save_transcript
 
         conv = ConversationManager()
         conv.add_user_message("Hello agent")
@@ -549,7 +549,7 @@ class TestTranscript:
         assert restored.history[1].role == "assistant"
 
     def test_load_nonexistent(self, tmp_dir):
-        from .teams.transcript import load_transcript
+        from coding_agent.teams.transcript import load_transcript
         with patch("coding_agent.teams.models.Path.home", return_value=Path(tmp_dir)):
             result = load_transcript("no-team", "no-agent")
         assert result is None
@@ -560,19 +560,19 @@ class TestTranscript:
 
 class TestAgentCoordinatorIntegration:
     def test_normal_prompt(self):
-        from .prompts import build_system_prompt, IDENTITY_SECTION
+        from coding_agent.prompts import build_system_prompt, IDENTITY_SECTION
         prompt = build_system_prompt()
         # 验证 identity section 内容包含在 prompt 中
         assert "Coding Agent" in prompt
         assert IDENTITY_SECTION.content[:30] in prompt
 
     def test_coordinator_prompt(self):
-        from .prompts import build_system_prompt
+        from coding_agent.prompts import build_system_prompt
         prompt = build_system_prompt(coordinator_mode=True)
         assert "coordinator" in prompt.lower()
 
     def test_coordinator_mode_overrides_normal(self):
-        from .prompts import build_system_prompt
+        from coding_agent.prompts import build_system_prompt
         # coordinator 模式走独立的 prompt 生成路径，不包含普通 identity 段
         prompt = build_system_prompt(coordinator_mode=True)
         assert "coordinator" in prompt.lower()

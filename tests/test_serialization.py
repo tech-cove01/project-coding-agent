@@ -7,13 +7,13 @@ Extended Thinking 的往返（round-trip）契约：带 tool-use 的这一轮必
 """
 from __future__ import annotations
 
-from .conversation import (
+from coding_agent.conversation  import (
     ConversationManager,
     ThinkingBlock,
     ToolResultBlock,
     ToolUseBlock,
 )
-from .serialization import (
+from coding_agent.serialization  import (
     build_anthropic_messages,
     build_chat_completion_messages,
     build_messages,

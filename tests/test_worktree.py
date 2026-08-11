@@ -10,14 +10,14 @@ from pathlib import Path
 
 import pytest
 
-from .cache import FileCache
-from .config import WorktreeConfig, load_config
-from .worktree.changes import count_worktree_changes, has_worktree_changes
-from .worktree.integration import build_worktree_notice, generate_worktree_name
-from .worktree.manager import WorktreeError, WorktreeManager
-from .worktree.models import WorktreeSession
-from .worktree.session import load_worktree_session, save_worktree_session
-from .worktree.slug import flatten_slug, validate_slug
+from coding_agent.cache  import FileCache
+from coding_agent.config  import WorktreeConfig, load_config
+from coding_agent.worktree.changes  import count_worktree_changes, has_worktree_changes
+from coding_agent.worktree.integration  import build_worktree_notice, generate_worktree_name
+from coding_agent.worktree.manager  import WorktreeError, WorktreeManager
+from coding_agent.worktree.models  import WorktreeSession
+from coding_agent.worktree.session  import load_worktree_session, save_worktree_session
+from coding_agent.worktree.slug  import flatten_slug, validate_slug
 
 # =========================================================================
 # A. Slug 校验

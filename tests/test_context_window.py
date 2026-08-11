@@ -12,9 +12,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from .client import resolve_context_window
-from .config import ProviderConfig
-from .validator import (
+from coding_agent.client  import resolve_context_window
+from coding_agent.config  import ProviderConfig
+from coding_agent.validator  import (
     ConfigError,
     lookup_model_context_window,
     validate_providers,

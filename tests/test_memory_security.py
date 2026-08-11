@@ -11,9 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from .memory import MemoryWriteSanitizer, is_auto_mem_path
-from .tools.write_file import WriteFile
-from .tools.edit_file import EditFile
+from coding_agent.memory  import MemoryWriteSanitizer, is_auto_mem_path
+from coding_agent.tools.write_file  import WriteFile
+from coding_agent.tools.edit_file  import EditFile
 
 
 def _scan(content: str):
@@ -61,7 +61,7 @@ class TestHijackScan:
 
 class TestSecretScan:
     def test_aliyun_access_key(self):
-        result = _scan("配置如下：AccessKey LTAI4G8abc... 是生产环境密钥。")
+        result = _scan("配置如下：AccessKey LTAI4G8abcdefgh1234567890 是生产环境密钥。")
         assert result.blocked
         assert any(i.category == "secret" for i in result.issues)
 

@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from .hooks import (
+from coding_agent.hooks  import (
     Action,
     ActionResult,
     Condition,
@@ -227,7 +227,7 @@ class TestConditionGroupEvaluate:
 class TestCommandExecutor:
     @pytest.mark.asyncio
     async def test_normal_execution(self):
-        from .hooks.executors import execute_command
+        from coding_agent.hooks.executors import execute_command
 
         action = Action(type="command", command="echo hello")
         ctx = HookContext()
@@ -237,7 +237,7 @@ class TestCommandExecutor:
 
     @pytest.mark.asyncio
     async def test_variable_substitution(self):
-        from .hooks.executors import execute_command
+        from coding_agent.hooks.executors import execute_command
 
         action = Action(type="command", command="echo $FILE_PATH")
         ctx = HookContext(file_path="src/main.py")
@@ -246,9 +246,9 @@ class TestCommandExecutor:
 
     @pytest.mark.asyncio
     async def test_timeout(self):
-        from .hooks.executors import execute_command
+        from coding_agent.hooks.executors import execute_command
 
-        action = Action(type="command", command="sleep 10", timeout=1)
+        action = Action(type="command", command="python -c \"import time; time.sleep(10)\"", timeout=1)
         ctx = HookContext()
         result = await execute_command(action, ctx)
         assert result.success is False
@@ -257,7 +257,7 @@ class TestCommandExecutor:
 class TestPromptExecutor:
     @pytest.mark.asyncio
     async def test_returns_message(self):
-        from .hooks.executors import execute_prompt
+        from coding_agent.hooks.executors import execute_prompt
 
         action = Action(type="prompt", message="Hello $TOOL_NAME")
         ctx = HookContext(tool_name="WriteFile")
@@ -268,7 +268,7 @@ class TestPromptExecutor:
 class TestHttpExecutor:
     @pytest.mark.asyncio
     async def test_mock_request(self):
-        from .hooks.executors import execute_http
+        from coding_agent.hooks.executors import execute_http
 
         action = Action(type="http", url="https://httpbin.org/post", body='{"test": true}')
         ctx = HookContext()
@@ -284,7 +284,7 @@ class TestHttpExecutor:
 class TestAgentExecutor:
     @pytest.mark.asyncio
     async def test_stub(self):
-        from .hooks.executors import execute_agent
+        from coding_agent.hooks.executors import execute_agent
 
         action = Action(type="agent", prompt="Check $FILE_PATH")
         ctx = HookContext(file_path="test.py")
@@ -295,7 +295,7 @@ class TestAgentExecutor:
 class TestExecuteAction:
     @pytest.mark.asyncio
     async def test_dispatch(self):
-        from .hooks.executors import execute_action
+        from coding_agent.hooks.executors import execute_action
 
         action = Action(type="command", command="echo dispatch_test")
         ctx = HookContext()
@@ -304,7 +304,7 @@ class TestExecuteAction:
 
     @pytest.mark.asyncio
     async def test_unknown_type(self):
-        from .hooks.executors import execute_action
+        from coding_agent.hooks.executors import execute_action
 
         action = Action(type="unknown")
         ctx = HookContext()
@@ -507,11 +507,11 @@ class TestAgentHookIntegration:
 
     @pytest.mark.asyncio
     async def test_pre_tool_use_reject_skips_tool(self):
-        from .agent import Agent, ToolResultEvent
-        from .client import LLMClient
-        from .conversation import ConversationManager
-        from .tools import create_default_registry
-        from .tools.base import StreamEnd, StreamEvent, TextDelta, ToolCallComplete
+        from coding_agent.agent import Agent, ToolResultEvent
+        from coding_agent.client import LLMClient
+        from coding_agent.conversation import ConversationManager
+        from coding_agent.tools import create_default_registry
+        from coding_agent.tools.base import StreamEnd, StreamEvent, TextDelta, ToolCallComplete
 
         class MockClient(LLMClient):
             def __init__(self):

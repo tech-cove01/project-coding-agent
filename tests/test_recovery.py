@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from .context.manager import (
+from coding_agent.context.manager  import (
     RECOVERY_FILE_LIMIT,
     RECOVERY_SKILLS_BUDGET,
     RECOVERY_TOKENS_PER_FILE,

@@ -7,19 +7,19 @@ from pathlib import Path
 
 import pytest
 
-from .conversation import (
+from coding_agent.conversation  import (
     ConversationManager,
     Message,
     ToolResultBlock,
     ToolUseBlock,
 )
-from .memory.auto_memory import MemoryManager
-from .memory.instructions import (
+from coding_agent.memory.auto_memory  import MemoryManager
+from coding_agent.memory.instructions  import (
     MAX_INCLUDE_DEPTH,
     load_instructions,
     process_includes,
 )
-from .memory.session import (
+from coding_agent.memory.session  import (
     RecordType,
     ResumeResult,
     Session,
@@ -788,7 +788,7 @@ class TestConversationInjection:
 class TestMemoryExtraction:
     def test_memory_types_aligned_with_go(self, tmp_path: Path) -> None:
         """验证四种记忆类型与 Go 版一致。"""
-        from .memory.auto_memory import VALID_TYPES, _USER_LEVEL_TYPES, _PROJECT_LEVEL_TYPES
+        from coding_agent.memory.auto_memory import VALID_TYPES, _USER_LEVEL_TYPES, _PROJECT_LEVEL_TYPES
 
         assert VALID_TYPES == {"user", "feedback", "project", "reference"}
         assert _USER_LEVEL_TYPES == {"user", "feedback"}

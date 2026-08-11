@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .context.manager import (
+from coding_agent.context.manager  import (
     AGGREGATE_CHAR_LIMIT,
     PERSISTED_TAG,
     REPLACEMENT_RECORDS_FILENAME,
@@ -17,7 +17,7 @@ from .context.manager import (
     load_replacement_records,
     reconstruct_replacement_state,
 )
-from .conversation import ConversationManager, Message, ToolResultBlock
+from coding_agent.conversation  import ConversationManager, Message, ToolResultBlock
 
 def _one_msg_conv(*results: ToolResultBlock) -> ConversationManager:
     conv = ConversationManager()

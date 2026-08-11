@@ -10,24 +10,24 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from .agents.parser import AgentDef, AgentParseError, parse_agent_file, parse_frontmatter
-from .agents.loader import AgentLoader
-from .agents.tool_filter import (
+from coding_agent.agents.parser  import AgentDef, AgentParseError, parse_agent_file, parse_frontmatter
+from coding_agent.agents.loader  import AgentLoader
+from coding_agent.agents.tool_filter  import (
     ALL_AGENT_DISALLOWED_TOOLS,
     ASYNC_AGENT_ALLOWED_TOOLS,
     resolve_agent_tools,
 )
-from .agents.fork import (
+from coding_agent.agents.fork  import (
     FORK_BOILERPLATE_TAG,
     ForkError,
     build_forked_messages,
 )
-from .agents.trace import TraceManager, TraceNode
-from .agents.task_manager import BackgroundTask, TaskManager
-from .agents.notification import format_task_notification, inject_task_notifications
-from .conversation import ConversationManager, Message, ToolResultBlock, ToolUseBlock
-from .tools import ToolRegistry
-from .tools.base import Tool, ToolResult
+from coding_agent.agents.trace  import TraceManager, TraceNode
+from coding_agent.agents.task_manager  import BackgroundTask, TaskManager
+from coding_agent.agents.notification  import format_task_notification, inject_task_notifications
+from coding_agent.conversation  import ConversationManager, Message, ToolResultBlock, ToolUseBlock
+from coding_agent.tools  import ToolRegistry
+from coding_agent.tools.base  import Tool, ToolResult
 
 # =====================================================================
 # 辅助函数
@@ -648,7 +648,7 @@ class TestNotification:
 
 class TestConfig:
     def test_enable_fork_default(self, tmp_path: Path):
-        from .config import load_config
+        from coding_agent.config import load_config
         cfg = tmp_path / "config.yaml"
         cfg.write_text(textwrap.dedent("""\
         providers:
@@ -662,7 +662,7 @@ class TestConfig:
         assert config.enable_verification_agent is False
 
     def test_enable_fork_true(self, tmp_path: Path):
-        from .config import load_config
+        from coding_agent.config import load_config
         cfg = tmp_path / "config.yaml"
         cfg.write_text(textwrap.dedent("""\
         providers:
@@ -683,7 +683,7 @@ class TestConfig:
 
 class TestPermissionMode:
     def test_bypass_mode(self):
-        from .permissions.modes import PermissionMode, mode_decide
+        from coding_agent.permissions.modes import PermissionMode, mode_decide
         assert PermissionMode.BYPASS.value == "bypassPermissions"
         assert mode_decide(PermissionMode.BYPASS, "read") == "allow"
         assert mode_decide(PermissionMode.BYPASS, "write") == "allow"
@@ -695,14 +695,14 @@ class TestPermissionMode:
 
 class TestAgentToolParams:
     def test_required_fields(self):
-        from .tools.agent_tool import AgentToolParams
+        from coding_agent.tools.agent_tool import AgentToolParams
         params = AgentToolParams(prompt="do this", description="test")
         assert params.prompt == "do this"
         assert params.subagent_type is None
         assert params.run_in_background is False
 
     def test_optional_fields(self):
-        from .tools.agent_tool import AgentToolParams
+        from coding_agent.tools.agent_tool import AgentToolParams
         params = AgentToolParams(
             prompt="do",
             description="test",
@@ -724,7 +724,7 @@ class TestAgentToolParams:
 
 class TestAgentExtensions:
     def test_agent_has_id(self):
-        from .agent import Agent
+        from coding_agent.agent import Agent
         client = MagicMock()
         registry = ToolRegistry()
         agent = Agent(client=client, registry=registry, protocol="anthropic")
@@ -734,7 +734,7 @@ class TestAgentExtensions:
         assert agent.trace_id is None
 
     def test_agent_catalog(self):
-        from .agent import Agent
+        from coding_agent.agent import Agent
         client = MagicMock()
         registry = ToolRegistry()
         agent = Agent(client=client, registry=registry, protocol="anthropic")

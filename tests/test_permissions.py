@@ -9,7 +9,7 @@ from typing import Any, AsyncIterator
 import pytest
 import yaml
 
-from .agent import (
+from coding_agent.agent  import (
     Agent,
     ErrorEvent,
     LoopComplete,
@@ -21,9 +21,9 @@ from .agent import (
     TurnComplete,
     UsageEvent,
 )
-from .client import LLMClient
-from .conversation import ConversationManager
-from .permissions import (
+from coding_agent.client  import LLMClient
+from coding_agent.conversation  import ConversationManager
+from coding_agent.permissions  import (
     Decision,
     DangerousCommandDetector,
     PathSandbox,
@@ -35,8 +35,8 @@ from .permissions import (
     mode_decide,
     parse_rule,
 )
-from .tools import create_default_registry
-from .tools.base import StreamEnd, StreamEvent, TextDelta, ToolCallComplete
+from coding_agent.tools  import create_default_registry
+from coding_agent.tools.base  import StreamEnd, StreamEvent, TextDelta, ToolCallComplete
 
 # ===========================================================================
 # 第一层：DangerousCommandDetector（危险命令检测器）
@@ -286,28 +286,28 @@ class TestPermissionChecker:
         )
 
     def test_dangerous_command_denied(self) -> None:
-        from .tools.bash import Bash
+        from coding_agent.tools.bash import Bash
         tool = Bash()
         d = self.checker.check(tool, {"command": "rm -rf /"})
         assert d.effect == "deny"
         assert "危险命令" in d.reason
 
     def test_write_path_outside_sandbox_asks(self) -> None:
-        from .tools.write_file import WriteFile
+        from coding_agent.tools.write_file import WriteFile
         tool = WriteFile()
         d = self.checker.check(tool, {"file_path": "/etc/passwd", "content": "x"})
         assert d.effect == "ask"
         assert "沙箱" in d.reason
 
     def test_read_path_outside_sandbox_asks(self) -> None:
-        from .tools.read_file import ReadFile
+        from coding_agent.tools.read_file import ReadFile
         tool = ReadFile()
         d = self.checker.check(tool, {"file_path": "/etc/passwd"})
         assert d.effect == "ask"
         assert "沙箱" in d.reason
 
     def test_read_tool_allowed_by_default_mode(self) -> None:
-        from .tools.read_file import ReadFile
+        from coding_agent.tools.read_file import ReadFile
         tool = ReadFile()
         test_file = self.tmpdir / "hello.txt"
         test_file.write_text("hi")
@@ -315,40 +315,40 @@ class TestPermissionChecker:
         assert d.effect == "allow"
 
     def test_write_tool_asks_in_default_mode(self) -> None:
-        from .tools.write_file import WriteFile
+        from coding_agent.tools.write_file import WriteFile
         tool = WriteFile()
         d = self.checker.check(tool, {"file_path": str(self.tmpdir / "new.txt"), "content": "hi"})
         assert d.effect == "ask"
 
     def test_bash_asks_in_default_mode(self) -> None:
-        from .tools.bash import Bash
+        from coding_agent.tools.bash import Bash
         tool = Bash()
         d = self.checker.check(tool, {"command": "npm test"})
         assert d.effect == "ask"
 
     def test_plan_mode_asks_write(self) -> None:
-        from .tools.write_file import WriteFile
+        from coding_agent.tools.write_file import WriteFile
         self.checker.mode = PermissionMode.PLAN
         tool = WriteFile()
         d = self.checker.check(tool, {"file_path": str(self.tmpdir / "x.txt"), "content": "hi"})
         assert d.effect == "ask"
 
     def test_bypass_mode_allows_all(self) -> None:
-        from .tools.bash import Bash
+        from coding_agent.tools.bash import Bash
         self.checker.mode = PermissionMode.BYPASS
         tool = Bash()
         d = self.checker.check(tool, {"command": "npm test"})
         assert d.effect == "allow"
 
     def test_bypass_still_blocks_dangerous(self) -> None:
-        from .tools.bash import Bash
+        from coding_agent.tools.bash import Bash
         self.checker.mode = PermissionMode.BYPASS
         tool = Bash()
         d = self.checker.check(tool, {"command": "rm -rf /"})
         assert d.effect == "deny"
 
     def test_rule_overrides_mode(self) -> None:
-        from .tools.bash import Bash
+        from coding_agent.tools.bash import Bash
         tmpdir = Path(tempfile.mkdtemp())
         rules_file = tmpdir / "rules.yaml"
         rules_file.write_text(yaml.dump([

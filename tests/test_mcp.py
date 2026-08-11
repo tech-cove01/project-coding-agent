@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import yaml
 
-from .config import (
+from coding_agent.config  import (
     AppConfig,
     ConfigError,
     MCPServerConfig,
@@ -173,8 +173,8 @@ class TestLoadConfigMCP:
 class TestMCPToolWrapper:
     def test_name_format(self) -> None:
         from mcp import types as mcp_types
-        from .mcp.tool_wrapper import MCPToolWrapper
-        from .mcp.client import MCPClient
+        from coding_agent.mcp.tool_wrapper import MCPToolWrapper
+        from coding_agent.mcp.client import MCPClient
 
         tool_def = mcp_types.Tool(
             name="search_issues",
@@ -197,7 +197,7 @@ class TestMCPToolWrapper:
 
     def test_get_schema_uses_original_input_schema(self) -> None:
         from mcp import types as mcp_types
-        from .mcp.tool_wrapper import MCPToolWrapper
+        from coding_agent.mcp.tool_wrapper import MCPToolWrapper
 
         input_schema = {
             "type": "object",
@@ -223,7 +223,7 @@ class TestMCPToolWrapper:
 class TestExtractText:
     def test_text_content(self) -> None:
         from mcp import types as mcp_types
-        from .mcp.tool_wrapper import _extract_text
+        from coding_agent.mcp.tool_wrapper import _extract_text
 
         content = [
             mcp_types.TextContent(type="text", text="hello"),
@@ -232,13 +232,13 @@ class TestExtractText:
         assert _extract_text(content) == "hello\nworld"
 
     def test_empty_content(self) -> None:
-        from .mcp.tool_wrapper import _extract_text
+        from coding_agent.mcp.tool_wrapper import _extract_text
 
         assert _extract_text([]) == "(no output)"
 
     def test_image_content(self) -> None:
         from mcp import types as mcp_types
-        from .mcp.tool_wrapper import _extract_text
+        from coding_agent.mcp.tool_wrapper import _extract_text
 
         content = [mcp_types.ImageContent(type="image", data="...", mimeType="image/png")]
         assert "[image: image/png]" in _extract_text(content)
@@ -250,8 +250,8 @@ class TestExtractText:
 class TestMCPManagerPartialFailure:
     @pytest.mark.asyncio
     async def test_single_server_failure_does_not_block_others(self) -> None:
-        from .mcp.manager import MCPManager
-        from .tools import ToolRegistry
+        from coding_agent.mcp.manager import MCPManager
+        from coding_agent.tools import ToolRegistry
 
         good_config = MCPServerConfig(
             name="good",

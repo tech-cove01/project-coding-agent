@@ -1,0 +1,15 @@
+name: is_prime
+description: |
+  编写一个 Python 脚本 prime.py，定义一个函数 is_prime(n) 判断 n 是否为质数。
+  脚本底部应包含自测：运行脚本时校验 is_prime(17) 为真、is_prime(15) 为假，
+  若校验失败则脚本以非零退出码退出。
+difficulty: medium
+domain: coding
+verify:
+  - type: file_exists
+    path: "{{workdir}}/prime.py"
+  - type: file_contains
+    path: "{{workdir}}/prime.py"
+    pattern: "def is_prime"
+  - type: command_succeeds
+    command: "python {{workdir}}/prime.py"

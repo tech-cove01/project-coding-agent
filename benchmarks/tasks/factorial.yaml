@@ -1,0 +1,14 @@
+name: factorial
+description: |
+  编写一个 Python 脚本 fact.py，定义一个函数 factorial(n) 计算 n 的阶乘。
+  脚本底部应包含自测：运行脚本时校验 factorial(5) == 120，若校验失败则脚本以非零退出码退出。
+difficulty: easy
+domain: coding
+verify:
+  - type: file_exists
+    path: "{{workdir}}/fact.py"
+  - type: file_contains
+    path: "{{workdir}}/fact.py"
+    pattern: "def factorial"
+  - type: command_succeeds
+    command: "python {{workdir}}/fact.py"

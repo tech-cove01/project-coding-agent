@@ -1,0 +1,20 @@
+name: write_tests
+description: |
+  在当前目录创建两个文件：
+  1. calc.py：定义一个函数 divide(a, b)，b 为 0 时抛 ValueError，否则返回 a/b。
+  2. test_calc.py：为 divide 编写测试逻辑，脚本可直接运行：
+     - 校验 divide(10, 2) == 5.0
+     - 校验 divide(7, 0) 会抛 ValueError
+     - 若任一校验失败，test_calc.py 以非零退出码退出
+difficulty: hard
+domain: testing
+verify:
+  - type: file_exists
+    path: "{{workdir}}/calc.py"
+  - type: file_exists
+    path: "{{workdir}}/test_calc.py"
+  - type: file_contains
+    path: "{{workdir}}/calc.py"
+    pattern: "def divide"
+  - type: command_succeeds
+    command: "python {{workdir}}/test_calc.py"

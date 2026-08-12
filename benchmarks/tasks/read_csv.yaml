@@ -1,0 +1,22 @@
+name: read_csv
+description: |
+  在当前目录创建文件 data.csv，内容为：
+  name,score
+  alice,90
+  bob,80
+  carol,95
+  编写一个 Python 脚本 stats.py，读取 data.csv，计算并打印 score 列的平均值。
+  stats.py 运行后应校验平均值为 88.333...（90+80+95 / 3），
+  若校验失败则 stats.py 以非零退出码退出。
+difficulty: hard
+domain: data-processing
+verify:
+  - type: file_exists
+    path: "{{workdir}}/data.csv"
+  - type: file_exists
+    path: "{{workdir}}/stats.py"
+  - type: file_contains
+    path: "{{workdir}}/data.csv"
+    pattern: "carol,95"
+  - type: command_succeeds
+    command: "python {{workdir}}/stats.py"

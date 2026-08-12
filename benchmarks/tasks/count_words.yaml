@@ -1,0 +1,15 @@
+name: count_words
+description: |
+  编写一个 Python 脚本 words.py，定义一个函数 count_words(text) 返回一段文本的单词数。
+  脚本底部应包含自测：运行脚本时校验 count_words("hello world foo") == 3，
+  若校验失败则脚本以非零退出码退出。
+difficulty: medium
+domain: coding
+verify:
+  - type: file_exists
+    path: "{{workdir}}/words.py"
+  - type: file_contains
+    path: "{{workdir}}/words.py"
+    pattern: "def count_words"
+  - type: command_succeeds
+    command: "python {{workdir}}/words.py"

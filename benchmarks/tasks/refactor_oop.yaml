@@ -1,0 +1,22 @@
+name: refactor_oop
+description: |
+  在当前目录创建文件 account.py，用面向对象的方式定义一个 BankAccount 类，
+  包含 deposit(amount) 和 withdraw(amount) 方法，以及 balance 属性。
+  脚本底部应包含自测：创建一个初始余额 100 的账户，deposit 50、withdraw 30，
+  运行脚本时校验最终 balance == 120，若校验失败则脚本以非零退出码退出。
+difficulty: hard
+domain: refactor
+verify:
+  - type: file_exists
+    path: "{{workdir}}/account.py"
+  - type: file_contains
+    path: "{{workdir}}/account.py"
+    pattern: "class BankAccount"
+  - type: file_contains
+    path: "{{workdir}}/account.py"
+    pattern: "def deposit"
+  - type: file_contains
+    path: "{{workdir}}/account.py"
+    pattern: "def withdraw"
+  - type: command_succeeds
+    command: "python {{workdir}}/account.py"

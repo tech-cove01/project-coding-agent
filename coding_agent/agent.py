@@ -310,6 +310,9 @@ class Agent:
             llm_call=self._make_llm_call(),
         )
         self._loop_count = 0
+        # 任务级 Checkpoint：长任务断点续跑（复用 session 序列化链路）
+        from coding_agent.checkpoint import CheckpointManager
+        self.checkpoint = CheckpointManager(self.session_dir)
         # 记忆提取合并策略（对齐 Go 版 inProgress + pendingContext）：
         # _extracting: 标记是否有提取正在进行
         # _pending_extraction: 提取期间又触发了新请求，标记需要尾随提取
@@ -1088,22 +1091,32 @@ class Agent:
     async def run_to_completion(
         self, task: str, conversation: ConversationManager | None = None,
         event_callback: Callable[[dict[str, Any]], None] | None = None,
+        resume_from: str | Path | None = None,
     ) -> str:
+        resumed = False
         if conversation is None:
-            conversation = ConversationManager()
+            # 断点续跑：优先从 Checkpoint 恢复对话上下文
+            if resume_from:
+                conv = self.checkpoint.load_from(resume_from)
+                if conv is not None and conv.history:
+                    conversation = conv
+                    resumed = True
+            if conversation is None:
+                conversation = ConversationManager()
 
             env_context = build_environment_context(
                 self.work_dir, self.active_skills, self._skill_catalog, self._agent_catalog
             )
-            conversation.inject_environment(env_context)
+            if not resumed:
+                conversation.inject_environment(env_context)
 
-            if self.instructions_content:
-                memory_content = self.memory_manager.load() if self.memory_manager else ""
-                conversation.inject_long_term_memory(
-                    self.instructions_content, memory_content
-                )
+                if self.instructions_content:
+                    memory_content = self.memory_manager.load() if self.memory_manager else ""
+                    conversation.inject_long_term_memory(
+                        self.instructions_content, memory_content
+                    )
 
-        if task:
+        if task and not resumed:
             conversation.add_user_message(task)
 
         hook_prompts = (
@@ -1241,6 +1254,12 @@ class Agent:
                 )
 
             conversation.add_tool_results_message(tool_results)
+
+            # 任务级 Checkpoint：每轮工具执行完成后落盘，支持断点续跑
+            try:
+                self.checkpoint.save(conversation)
+            except Exception:
+                log.debug("Failed to save checkpoint", exc_info=True)
 
             if self.hook_engine:
                 ctx = self._build_hook_context("turn_end")

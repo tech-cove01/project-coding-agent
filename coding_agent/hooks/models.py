@@ -55,6 +55,8 @@ class HookContext:
     file_path: str = ""
     message: str = ""
     error: str = ""
+    # 可选注入的 Agent 引用，供 agent 类型执行器调用子 Agent（无则不启用该能力）
+    agent: Any = None
 
     def get_field(self, name: str) -> str:
         if name == "tool":

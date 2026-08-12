@@ -283,14 +283,29 @@ class TestHttpExecutor:
 
 class TestAgentExecutor:
     @pytest.mark.asyncio
-    async def test_stub(self):
+    async def test_without_agent_degrades_gracefully(self):
         from coding_agent.hooks.executors import execute_agent
 
         action = Action(type="agent", prompt="Check $FILE_PATH")
         ctx = HookContext(file_path="test.py")
         result = await execute_agent(action, ctx)
         assert result.success is True
-        assert "not yet implemented" in result.output
+        assert "requires an Agent" in result.output
+
+    @pytest.mark.asyncio
+    async def test_with_agent_calls_run_to_completion(self):
+        from coding_agent.hooks.executors import execute_agent
+
+        class FakeAgent:
+            async def run_to_completion(self, prompt: str) -> str:
+                return "sub-agent conclusion"
+
+        action = Action(type="agent", prompt="Do something")
+        ctx = HookContext()
+        ctx.agent = FakeAgent()
+        result = await execute_agent(action, ctx)
+        assert result.success is True
+        assert "sub-agent conclusion" in result.output
 
 class TestExecuteAction:
     @pytest.mark.asyncio

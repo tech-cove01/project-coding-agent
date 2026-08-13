@@ -1,0 +1,16 @@
+name: reverse_string
+label: 字符串反转
+description: |
+  编写一个 Python 脚本 reverse.py，定义一个函数 reverse(s) 返回字符串 s 的反转。
+  不使用内置的 s[::-1] 切片技巧，用循环实现。脚本底部应包含自测：运行脚本时校验
+  reverse("hello") == "olleh"，若校验失败则脚本以非零退出码退出。
+difficulty: easy
+domain: coding
+verify:
+  - type: file_exists
+    path: "{{workdir}}/reverse.py"
+  - type: file_contains
+    path: "{{workdir}}/reverse.py"
+    pattern: "def reverse"
+  - type: command_succeeds
+    command: "python {{workdir}}/reverse.py"

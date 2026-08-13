@@ -1,0 +1,15 @@
+name: max_of_three
+label: 三数最大值
+description: |
+  编写一个 Python 脚本 max3.py，定义一个函数 max3(a, b, c) 返回三个数中的最大值。
+  脚本底部应包含自测：运行脚本时校验 max3(1, 9, 5) == 9，若校验失败则脚本以非零退出码退出。
+difficulty: easy
+domain: coding
+verify:
+  - type: file_exists
+    path: "{{workdir}}/max3.py"
+  - type: file_contains
+    path: "{{workdir}}/max3.py"
+    pattern: "def max3"
+  - type: command_succeeds
+    command: "python {{workdir}}/max3.py"

@@ -198,6 +198,56 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   border-radius: 4px; padding: 2px 6px; font-size: 12px; outline: none; cursor: pointer;
 }
 #perm-select:focus { border-color: var(--accent); }
+
+/* 测评控件（柔和胶囊风格） */
+.eval-control { display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; }
+#eval-task-select {
+  background: var(--bg-input); color: var(--text); border: 1px solid var(--border);
+  border-radius: 999px; padding: 4px 12px; font-size: 12px; outline: none; cursor: pointer;
+  max-width: 160px;
+}
+#eval-task-select:focus { border-color: var(--accent); }
+#eval-btn {
+  background: var(--accent); color: #fff; border: none; border-radius: 999px;
+  padding: 4px 14px; font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: opacity .2s;
+}
+#eval-btn:hover { opacity: .85; }
+#eval-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+/* 评测面板（居中弹窗） */
+#eval-panel {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 560px; max-width: 90vw; max-height: 70vh;
+  background: var(--bg-surface); border: 1px solid var(--border); border-radius: 14px;
+  display: flex; flex-direction: column; box-shadow: 0 12px 40px rgba(0,0,0,.45);
+  z-index: 1000; overflow: hidden;
+}
+/* 居中弹窗遮罩 */
+#eval-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,.45); z-index: 999; display: none;
+}
+.eval-head {
+  display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+  border-bottom: 1px solid var(--border); background: var(--bg-surface);
+}
+.eval-head #eval-title { font-weight: 600; font-size: 13px; flex: 1; }
+.eval-status { font-size: 11px; padding: 2px 10px; border-radius: 999px; font-weight: 600; }
+.eval-status.running { background: rgba(59,130,246,.15); color: #3b82f6; }
+.eval-status.pass { background: rgba(16,185,129,.15); color: #10b981; }
+.eval-status.fail { background: rgba(239,68,68,.15); color: #ef4444; }
+#eval-close { background: none; border: none; color: var(--text-dim); font-size: 14px; cursor: pointer; }
+#eval-close:hover { color: var(--text); }
+#eval-body { padding: 12px 14px; overflow-y: auto; font-size: 13px; line-height: 1.6; }
+.eval-task-meta { color: var(--text-dim); font-size: 12px; margin-bottom: 8px; }
+.eval-step { margin-bottom: 8px; }
+.eval-step .step-label { font-weight: 600; color: var(--accent); }
+.eval-result { margin-top: 10px; padding: 10px 12px; border-radius: 8px; font-weight: 600; }
+.eval-result.pass { background: rgba(16,185,129,.12); color: #10b981; }
+.eval-result.fail { background: rgba(239,68,68,.12); color: #ef4444; }
+.eval-text { white-space: pre-wrap; color: var(--text); margin: 2px 0; }
+.eval-tool { color: var(--text-dim); font-size: 12px; margin: 2px 0; }
 </style>
 </head>
 <body>
@@ -215,9 +265,32 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
           <option value="bypassPermissions">跳过权限检查</option>
         </select>
       </label>
+      <div class="eval-control" title="自进化评测：驱动 Agent 真实完成一个编码任务并打分">
+        <select id="eval-task-select">
+          <option value="">-- 选择评测任务 --</option>
+          <option value="fibonacci">斐波那契数列</option>
+          <option value="is_prime">质数判断</option>
+          <option value="reverse_string">字符串反转</option>
+          <option value="factorial">阶乘计算</option>
+          <option value="max_of_three">三数最大值</option>
+          <option value="merge_dicts">字典合并</option>
+          <option value="count_words">单词计数</option>
+          <option value="two_file_project">多文件项目</option>
+        </select>
+        <button id="eval-btn">🎯 测评</button>
+      </div>
     </div>
   </div>
   <div id="messages"></div>
+  <div id="eval-overlay"></div>
+  <div id="eval-panel" style="display:none;">
+    <div class="eval-head">
+      <span id="eval-title">评测进行中...</span>
+      <span id="eval-status" class="eval-status running">运行中</span>
+      <button id="eval-close">✕</button>
+    </div>
+    <div id="eval-body"></div>
+  </div>
   <div id="input-area" style="position:relative;">
     <div id="slash-menu"></div>
     <textarea id="input" placeholder="输入消息... (Enter 发送，Shift+Enter 换行)" rows="1"></textarea>
@@ -234,6 +307,14 @@ const connStatus = document.getElementById('conn-status');
 const tokenInfo = document.getElementById('token-info');
 const slashMenu = document.getElementById('slash-menu');
 const permSelect = document.getElementById('perm-select');
+const evalTaskSelect = document.getElementById('eval-task-select');
+const evalBtn = document.getElementById('eval-btn');
+const evalPanel = document.getElementById('eval-panel');
+const evalTitle = document.getElementById('eval-title');
+const evalStatus = document.getElementById('eval-status');
+const evalBody = document.getElementById('eval-body');
+const evalClose = document.getElementById('eval-close');
+const evalOverlay = document.getElementById('eval-overlay');
 
 let ws = null;
 let streaming = false;
@@ -247,6 +328,7 @@ let currentThinkingText = '';
 let autoScroll = true;
 let pingTimer = null;
 let connectedOnce = false;
+let evalActive = false;
 
 // Markdown 渲染配置
 if (typeof marked !== 'undefined') {
@@ -294,8 +376,81 @@ function connect() {
   };
 }
 
+// ---------- 自进化评测 ----------
+
+function startEval() {
+  const task = evalTaskSelect.value;
+  if (!task) { alert('请先选择一个评测任务'); return; }
+  evalPanel.style.display = 'flex';
+  evalOverlay.style.display = 'block';
+  evalTitle.textContent = '评测进行中...';
+  evalStatus.className = 'eval-status running';
+  evalStatus.textContent = '运行中';
+  evalBody.innerHTML = '<div class="eval-task-meta">正在驱动 Agent 执行该任务...</div>';
+  evalBtn.disabled = true;
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'evaluate', data: { task } }));
+  }
+}
+
+function closeEval() {
+  evalPanel.style.display = 'none';
+  evalOverlay.style.display = 'none';
+  evalBody.innerHTML = '';
+  evalBtn.disabled = false;
+}
+
+function renderEvalStream(text) {
+  const last = evalBody.lastElementChild;
+  if (last && last.classList.contains('eval-text')) {
+    last.textContent += text;
+  } else {
+    const div = document.createElement('div');
+    div.className = 'eval-text';
+    div.textContent = text;
+    evalBody.appendChild(div);
+  }
+  evalBody.scrollTop = evalBody.scrollHeight;
+}
+
+function renderEvalTool(name, args) {
+  const div = document.createElement('div');
+  div.className = 'eval-tool';
+  div.textContent = '⚙️ ' + name + (args ? ' ' + JSON.stringify(args) : '');
+  evalBody.appendChild(div);
+  evalBody.scrollTop = evalBody.scrollHeight;
+}
+
+function renderEvalMeta(data) {
+  const div = document.createElement('div');
+  div.className = 'eval-task-meta';
+  const domainZh = { 'coding': '编码', 'debugging': '调试', 'refactor': '重构', 'testing': '测试', 'file-io': '文件操作', 'multi-file': '多文件', 'data-processing': '数据处理' };
+  div.textContent = '任务: ' + (data.label || data.task) + ' | 难度: ' + data.difficulty + ' | 领域: ' + (domainZh[data.domain] || data.domain);
+  return div;
+}
+
 function handleMessage(msg) {
   switch (msg.type) {
+    case 'eval_start':
+      evalActive = true;
+      evalTitle.textContent = '评测: ' + (msg.data.label || msg.data.task);
+      evalStatus.className = 'eval-status running';
+      evalStatus.textContent = '运行中';
+      evalBody.innerHTML = '';
+      evalBody.appendChild(renderEvalMeta(msg.data));
+      break;
+    case 'eval_result':
+      evalActive = false;
+      evalBtn.disabled = false;
+      const ok = msg.data.ok;
+      evalStatus.className = 'eval-status ' + (ok ? 'pass' : 'fail');
+      evalStatus.textContent = ok ? '通过' : '失败';
+      const res = document.createElement('div');
+      res.className = 'eval-result ' + (ok ? 'pass' : 'fail');
+      res.textContent = (ok ? '✅ 通过' : '❌ 失败') + '  ' + msg.data.detail + '（耗时 ' + msg.data.elapsed + 's）';
+      evalBody.appendChild(res);
+      evalBody.scrollTop = evalBody.scrollHeight;
+      break;
     case 'permission_mode_changed':
       if (permSelect && msg.data && msg.data.mode) permSelect.value = msg.data.mode;
       break;
@@ -335,6 +490,7 @@ function handleMessage(msg) {
     }
 
     case 'stream_text':
+      if (evalActive) { renderEvalStream(msg.data.text); break; }
       if (currentThinkingEl) {
         currentThinkingEl.querySelector('.thinking-header span:last-child').textContent = '💭 思考';
         currentThinkingEl = null;
@@ -366,6 +522,7 @@ function handleMessage(msg) {
       break;
 
     case 'tool_use':
+      if (evalActive) { renderEvalTool(msg.data.toolName, msg.data.args); break; }
       if (currentThinkingEl) {
         currentThinkingEl.querySelector('.thinking-header span:last-child').textContent = '💭 思考';
         currentThinkingEl = null;
@@ -375,6 +532,7 @@ function handleMessage(msg) {
       break;
 
     case 'tool_result':
+      if (evalActive) { renderEvalTool('↳ ' + msg.data.toolName, msg.data.isError ? '⚠ error' : '✓ done'); break; }
       updateToolResult(msg.data);
       break;
 
@@ -822,6 +980,10 @@ permSelect.addEventListener('change', () => {
     ws.send(JSON.stringify({ type: 'permission_mode', data: { mode: permSelect.value } }));
   }
 });
+
+// 测评按钮
+evalBtn.addEventListener('click', startEval);
+evalClose.addEventListener('click', closeEval);
 
 // 启动
 connect();

@@ -1,0 +1,22 @@
+name: two_file_project
+label: 多文件项目
+description: |
+  在当前目录创建两个文件：
+  1. utils.py：定义一个函数 double(x) 返回 x 的两倍。
+  2. main.py：从 utils 导入 double，打印 double(21) 的结果，并校验结果为 42，
+     若校验失败则 main.py 以非零退出码退出。
+difficulty: medium
+domain: multi-file
+verify:
+  - type: file_exists
+    path: "{{workdir}}/utils.py"
+  - type: file_exists
+    path: "{{workdir}}/main.py"
+  - type: file_contains
+    path: "{{workdir}}/utils.py"
+    pattern: "def double"
+  - type: file_contains
+    path: "{{workdir}}/main.py"
+    pattern: "import"
+  - type: command_succeeds
+    command: "python {{workdir}}/main.py"

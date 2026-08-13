@@ -1,0 +1,19 @@
+name: read_write_file
+description: |
+  在当前目录创建一个 data.txt 文件，内容为三行：
+  line1
+  line2
+  line3
+  然后编写一个 Python 脚本 count_lines.py，读取 data.txt 并打印文件的行数。
+difficulty: medium
+domain: file-io
+verify:
+  - type: file_exists
+    path: "{{workdir}}/data.txt"
+  - type: file_exists
+    path: "{{workdir}}/count_lines.py"
+  - type: file_contains
+    path: "{{workdir}}/data.txt"
+    pattern: "line3"
+  - type: command_succeeds
+    command: "python {{workdir}}/count_lines.py"

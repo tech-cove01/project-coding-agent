@@ -79,10 +79,26 @@ teammate_mode: ""
 # enable_coordinator_mode: true
 
 # 自定义钩子（hooks/ 模块，事件驱动脚本）
+# 事件名用小写下划线，动作类型用 action.type。
+# 可用事件：session_start/session_end/turn_start/turn_end/pre_tool_use/post_tool_use/
+#           pre_send/post_receive/startup/shutdown/error/compact/permission_request/
+#           file_change/command_execute
+# 动作类型：command / prompt / http / agent
 # hooks:
-#   - name: pre-tool
-#     event: PreToolUse
-#     command: "python scripts/pre_tool.py"
+#   - id: pre-write-reject          # 工具执行前拦截（reject 仅限 pre_tool_use）
+#     event: pre_tool_use
+#     if: "args.tool_name == WriteFile && args.file_path =~ \\.env$"
+#     action:
+#       type: command
+#       command: "echo '拒绝修改 .env'"
+#     reject: true
+#   - id: turn-notify                # 每轮结束发 HTTP 通知
+#     event: turn_end
+#     action:
+#       type: http
+#       url: https://hooks.example.com/coding-agent
+#       method: POST
+#       body: '{"event": "$EVENT"}'
 
 # 工作树（worktree/ 模块）
 # worktree:

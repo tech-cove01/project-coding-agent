@@ -1,0 +1,15 @@
+name: file_append
+description: |
+  在当前目录创建文件 log.txt，写入第一行 "start"。
+  再编写一个 Python 脚本 append.py，以追加模式向 log.txt 写入一行 "end"。
+  append.py 运行后应校验：log.txt 恰好包含两行 "start" 和 "end"，
+  若校验失败则 append.py 以非零退出码退出。
+difficulty: medium
+domain: file-io
+verify:
+  - type: file_exists
+    path: "{{workdir}}/log.txt"
+  - type: file_exists
+    path: "{{workdir}}/append.py"
+  - type: command_succeeds
+    command: "python {{workdir}}/append.py"

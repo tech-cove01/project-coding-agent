@@ -1,0 +1,16 @@
+name: clamp_value
+description: |
+  编写一个 Python 脚本 clamp.py，定义一个函数 clamp(value, low, high)，
+  将 value 限制在 [low, high] 区间内（小于 low 返回 low，大于 high 返回 high，否则返回 value）。
+  脚本底部应包含自测：运行脚本时校验 clamp(5, 0, 10) == 5、clamp(-3, 0, 10) == 0、
+  clamp(15, 0, 10) == 10，若校验失败则脚本以非零退出码退出。
+difficulty: medium
+domain: coding
+verify:
+  - type: file_exists
+    path: "{{workdir}}/clamp.py"
+  - type: file_contains
+    path: "{{workdir}}/clamp.py"
+    pattern: "def clamp"
+  - type: command_succeeds
+    command: "python {{workdir}}/clamp.py"

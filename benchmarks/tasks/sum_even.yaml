@@ -1,0 +1,15 @@
+name: sum_even
+description: |
+  编写一个 Python 脚本 sum_even.py，定义一个函数 sum_even(n)，
+  返回 1 到 n 之间所有偶数的和。脚本底部应包含自测：运行脚本时校验
+  sum_even(10) == 30，若校验失败则脚本以非零退出码退出。
+difficulty: easy
+domain: coding
+verify:
+  - type: file_exists
+    path: "{{workdir}}/sum_even.py"
+  - type: file_contains
+    path: "{{workdir}}/sum_even.py"
+    pattern: "def sum_even"
+  - type: command_succeeds
+    command: "python {{workdir}}/sum_even.py"

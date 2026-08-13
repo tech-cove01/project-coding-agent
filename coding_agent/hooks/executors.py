@@ -72,12 +72,24 @@ async def execute_http(action: Action, ctx: HookContext) -> ActionResult:
 
 
 async def execute_agent(action: Action, ctx: HookContext) -> ActionResult:
+    """调用子 Agent 执行一个提示词，并把结论作为 hook 输出返回。
+
+    依赖 HookContext.agent（由 agent.py 注入当前 Agent 引用）。若未注入，
+    降级为明确提示（不抛错，避免拖垮 hook 链路）。
+    """
     prompt = ctx.expand(action.prompt)
-    log.info("Agent executor stub called with prompt: %s", prompt[:100])
-    return ActionResult(
-        output="agent executor not yet implemented",
-        success=True,
-    )
+    agent = getattr(ctx, "agent", None)
+    if agent is None:
+        return ActionResult(
+            output="agent action requires an Agent to be injected in HookContext",
+            success=True,
+        )
+    try:
+        result = await agent.run_to_completion(prompt)
+        output = (result or "").strip()[:1000]
+        return ActionResult(output=output, success=bool(output))
+    except Exception as e:
+        return ActionResult(output=f"Agent execution error: {e}", success=False)
 
 
 _EXECUTOR_MAP = {

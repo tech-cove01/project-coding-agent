@@ -1,0 +1,17 @@
+name: merge_dicts
+label: 字典合并
+description: |
+  编写一个 Python 脚本 merge.py，定义一个函数 merge_dicts(d1, d2) 返回合并后的字典，
+  相同 key 时以 d2 为准。脚本底部应包含自测：运行脚本时校验
+  merge_dicts({"a":1,"b":2}, {"b":3,"c":4}) == {"a":1,"b":3,"c":4}，
+  若校验失败则脚本以非零退出码退出。
+difficulty: medium
+domain: coding
+verify:
+  - type: file_exists
+    path: "{{workdir}}/merge.py"
+  - type: file_contains
+    path: "{{workdir}}/merge.py"
+    pattern: "def merge_dicts"
+  - type: command_succeeds
+    command: "python {{workdir}}/merge.py"

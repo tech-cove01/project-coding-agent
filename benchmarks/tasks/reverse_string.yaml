@@ -1,4 +1,5 @@
 name: reverse_string
+label: 字符串反转
 description: |
   编写一个 Python 脚本 reverse.py，定义一个函数 reverse(s) 返回字符串 s 的反转。
   不使用内置的 s[::-1] 切片技巧，用循环实现。脚本底部应包含自测：运行脚本时校验

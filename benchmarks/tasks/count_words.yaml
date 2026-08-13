@@ -1,4 +1,5 @@
 name: count_words
+label: 单词计数
 description: |
   编写一个 Python 脚本 words.py，定义一个函数 count_words(text) 返回一段文本的单词数。
   脚本底部应包含自测：运行脚本时校验 count_words("hello world foo") == 3，

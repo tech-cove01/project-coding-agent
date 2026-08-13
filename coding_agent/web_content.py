@@ -215,12 +215,18 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 #eval-btn:hover { opacity: .85; }
 #eval-btn:disabled { opacity: .4; cursor: not-allowed; }
 
-/* 评测面板 */
+/* 评测面板（居中弹窗） */
 #eval-panel {
-  position: fixed; right: 16px; bottom: 16px; width: 420px; max-height: 60vh;
-  background: var(--bg-surface); border: 1px solid var(--border); border-radius: 12px;
-  display: flex; flex-direction: column; box-shadow: 0 8px 28px rgba(0,0,0,.35);
-  z-index: 500; overflow: hidden;
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 560px; max-width: 90vw; max-height: 70vh;
+  background: var(--bg-surface); border: 1px solid var(--border); border-radius: 14px;
+  display: flex; flex-direction: column; box-shadow: 0 12px 40px rgba(0,0,0,.45);
+  z-index: 1000; overflow: hidden;
+}
+/* 居中弹窗遮罩 */
+#eval-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,.45); z-index: 999; display: none;
 }
 .eval-head {
   display: flex; align-items: center; gap: 8px; padding: 10px 14px;
@@ -262,20 +268,21 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
       <div class="eval-control" title="自进化评测：驱动 Agent 真实完成一个编码任务并打分">
         <select id="eval-task-select">
           <option value="">-- 选择评测任务 --</option>
-          <option value="fibonacci">fibonacci</option>
-          <option value="is_prime">is_prime</option>
-          <option value="reverse_string">reverse_string</option>
-          <option value="factorial">factorial</option>
-          <option value="max_of_three">max_of_three</option>
-          <option value="merge_dicts">merge_dicts</option>
-          <option value="count_words">count_words</option>
-          <option value="two_file_project">two_file_project</option>
+          <option value="fibonacci">斐波那契数列</option>
+          <option value="is_prime">质数判断</option>
+          <option value="reverse_string">字符串反转</option>
+          <option value="factorial">阶乘计算</option>
+          <option value="max_of_three">三数最大值</option>
+          <option value="merge_dicts">字典合并</option>
+          <option value="count_words">单词计数</option>
+          <option value="two_file_project">多文件项目</option>
         </select>
         <button id="eval-btn">🎯 测评</button>
       </div>
     </div>
   </div>
   <div id="messages"></div>
+  <div id="eval-overlay"></div>
   <div id="eval-panel" style="display:none;">
     <div class="eval-head">
       <span id="eval-title">评测进行中...</span>
@@ -307,6 +314,7 @@ const evalTitle = document.getElementById('eval-title');
 const evalStatus = document.getElementById('eval-status');
 const evalBody = document.getElementById('eval-body');
 const evalClose = document.getElementById('eval-close');
+const evalOverlay = document.getElementById('eval-overlay');
 
 let ws = null;
 let streaming = false;
@@ -374,7 +382,8 @@ function startEval() {
   const task = evalTaskSelect.value;
   if (!task) { alert('请先选择一个评测任务'); return; }
   evalPanel.style.display = 'flex';
-  evalTitle.textContent = '评测: ' + task;
+  evalOverlay.style.display = 'block';
+  evalTitle.textContent = '评测进行中...';
   evalStatus.className = 'eval-status running';
   evalStatus.textContent = '运行中';
   evalBody.innerHTML = '<div class="eval-task-meta">正在驱动 Agent 执行该任务...</div>';
@@ -386,6 +395,7 @@ function startEval() {
 
 function closeEval() {
   evalPanel.style.display = 'none';
+  evalOverlay.style.display = 'none';
   evalBody.innerHTML = '';
   evalBtn.disabled = false;
 }
@@ -414,7 +424,8 @@ function renderEvalTool(name, args) {
 function renderEvalMeta(data) {
   const div = document.createElement('div');
   div.className = 'eval-task-meta';
-  div.textContent = '任务: ' + data.task + ' | 难度: ' + data.difficulty + ' | 领域: ' + data.domain;
+  const domainZh = { 'coding': '编码', 'debugging': '调试', 'refactor': '重构', 'testing': '测试', 'file-io': '文件操作', 'multi-file': '多文件', 'data-processing': '数据处理' };
+  div.textContent = '任务: ' + (data.label || data.task) + ' | 难度: ' + data.difficulty + ' | 领域: ' + (domainZh[data.domain] || data.domain);
   return div;
 }
 
@@ -422,7 +433,7 @@ function handleMessage(msg) {
   switch (msg.type) {
     case 'eval_start':
       evalActive = true;
-      evalTitle.textContent = '评测: ' + msg.data.task + '（' + msg.data.difficulty + ' / ' + msg.data.domain + '）';
+      evalTitle.textContent = '评测: ' + (msg.data.label || msg.data.task);
       evalStatus.className = 'eval-status running';
       evalStatus.textContent = '运行中';
       evalBody.innerHTML = '';

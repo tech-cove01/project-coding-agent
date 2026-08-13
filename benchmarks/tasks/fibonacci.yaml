@@ -1,4 +1,5 @@
 name: fibonacci
+label: 斐波那契数列
 description: |
   编写一个 Python 脚本 fib.py，其中定义一个函数 fib(n) 返回斐波那契数列第 n 项
   （f(0)=0, f(1)=1）。脚本底部应包含自测：运行脚本时校验 fib(10) == 55，

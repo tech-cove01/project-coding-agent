@@ -220,36 +220,46 @@ class RemoteServer:
             self._connections.discard(websocket)
 
     async def _handle_evaluate(self, task_name: str) -> None:
-        """处理"测评"按钮：驱动 Agent 真实执行一个评测任务，流式展示过程并打分。
+        """处理"测评"按钮：驱动 Agent 在隔离临时目录真实执行评测任务，流式展示并打分。
 
-        复用了 _handle_user_message 的流式广播模式，额外在结束时用
-        benchmarks 的验证器对 Agent 产物打分，广播评测结果。
+        使用独立 conversation + 临时工作目录，避免污染主会话与真实工作目录；
+        结束后用 benchmarks 验证器对产物打分，广播完整过程与结果。
         """
         task = self._load_eval_task(task_name)
+        label = task.get("label", task_name) if task else task_name
         if task is None:
             await self._broadcast({
                 "type": "eval_result",
-                "data": {"task": task_name, "ok": False, "detail": f"未知评测任务: {task_name}"},
+                "data": {"task": task_name, "label": label, "ok": False, "detail": f"未知评测任务: {task_name}"},
             })
             return
 
         prompt = task.get("description", "").strip()
         if prompt:
-            prompt += "\n\n请在你的工作目录（当前目录）中完成上述任务。完成后简要说明你做了什么。"
+            prompt += "\n\n请在当前工作目录中完成上述任务，完成后简要说明你做了什么。"
         else:
-            prompt = f"请完成评测任务: {task_name}"
+            prompt = f"请完成评测任务: {label}"
 
         await self._broadcast({
             "type": "eval_start",
-            "data": {"task": task_name, "difficulty": task.get("difficulty", "?"), "domain": task.get("domain", "?")},
+            "data": {"task": task_name, "label": label,
+                     "difficulty": task.get("difficulty", "?"), "domain": task.get("domain", "?")},
         })
 
+        # 隔离临时工作目录：agent 的相对路径写到这里，不污染真实目录
+        import tempfile as _tempfile
+        workdir = Path(_tempfile.mkdtemp(prefix=f"eval_{task_name}_", dir=os.getcwd()))
+        prev_cwd = Path.cwd()
+        os.chdir(workdir)
+
+        conv = ConversationManager()
+        conv.add_user_message(prompt)
         stream_buf = ""
         result_text = ""
         start_time = time.monotonic()
 
         try:
-            async for event in self.agent.run(self.conversation):
+            async for event in self.agent.run(conv):
                 if isinstance(event, StreamText):
                     stream_buf += event.text
                     result_text += event.text
@@ -272,14 +282,16 @@ class RemoteServer:
                         stream_buf = ""
         except Exception as e:  # noqa: BLE001
             log.warning("Eval task %s failed: %s", task_name, e)
+        finally:
+            os.chdir(prev_cwd)
 
-        # 验证打分
+        # 验证打分（针对临时工作目录）
         verify_list = task.get("verify", [])
         ok = True
         detail = "无验证器，按输出非空判定" if not verify_list else ""
         failures = []
         for spec in verify_list:
-            passed, d = _run_verifier(spec, Path(os.getcwd()), result_text)
+            passed, d = _run_verifier(spec, workdir, result_text)
             if not passed:
                 ok = False
                 failures.append(d)
@@ -289,10 +301,13 @@ class RemoteServer:
             detail = f"{len(verify_list)} 项验证全部通过"
 
         elapsed = time.monotonic() - start_time
+        import shutil as _shutil
+        _shutil.rmtree(workdir, ignore_errors=True)
         await self._broadcast({
             "type": "eval_result",
             "data": {
                 "task": task_name,
+                "label": label,
                 "ok": ok,
                 "detail": detail,
                 "elapsed": round(elapsed, 2),

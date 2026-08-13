@@ -1,4 +1,5 @@
 name: merge_dicts
+label: 字典合并
 description: |
   编写一个 Python 脚本 merge.py，定义一个函数 merge_dicts(d1, d2) 返回合并后的字典，
   相同 key 时以 d2 为准。脚本底部应包含自测：运行脚本时校验

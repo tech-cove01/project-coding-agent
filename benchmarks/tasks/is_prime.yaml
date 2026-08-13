@@ -1,4 +1,5 @@
 name: is_prime
+label: 质数判断
 description: |
   编写一个 Python 脚本 prime.py，定义一个函数 is_prime(n) 判断 n 是否为质数。
   脚本底部应包含自测：运行脚本时校验 is_prime(17) 为真、is_prime(15) 为假，

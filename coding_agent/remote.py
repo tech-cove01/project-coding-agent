@@ -40,6 +40,25 @@ from coding_agent.web_content import INDEX_HTML
 log = logging.getLogger(__name__)
 
 
+def _run_verifier(spec: dict[str, Any], workdir: Path, agent_output: str) -> tuple[bool, str]:
+    """运行单个评测验证器，复用 benchmarks 的 verify 逻辑。
+
+    延迟导入 benchmarks._verifiers（benchmarks 位于项目根，不在 coding_agent 包内），
+    通过 sys.path 插入项目根来 import。
+    """
+    try:
+        import sys as _sys
+
+        root = str(Path(__file__).resolve().parent.parent)
+        if root not in _sys.path:
+            _sys.path.insert(0, root)
+        from benchmarks._verifiers import verify as _bench_verify
+
+        return _bench_verify(spec, workdir, agent_output)
+    except Exception as e:  # noqa: BLE001
+        return False, f"验证器加载失败: {e}"
+
+
 class RemoteServer:
     """Remote Control 核心：桥接 Agent 事件和 WebSocket 客户端。"""
 
@@ -182,6 +201,11 @@ class RemoteServer:
                 elif msg_type == "permission_mode":
                     await self._handle_permission_mode(data)
 
+                elif msg_type == "evaluate":
+                    task_name = data.get("task", "")
+                    if task_name:
+                        asyncio.create_task(self._handle_evaluate(task_name))
+
                 elif msg_type == "cancel":
                     if self._cancel_event is not None:
                         self._cancel_event.set()
@@ -194,6 +218,106 @@ class RemoteServer:
             pass
         finally:
             self._connections.discard(websocket)
+
+    async def _handle_evaluate(self, task_name: str) -> None:
+        """处理"测评"按钮：驱动 Agent 真实执行一个评测任务，流式展示过程并打分。
+
+        复用了 _handle_user_message 的流式广播模式，额外在结束时用
+        benchmarks 的验证器对 Agent 产物打分，广播评测结果。
+        """
+        task = self._load_eval_task(task_name)
+        if task is None:
+            await self._broadcast({
+                "type": "eval_result",
+                "data": {"task": task_name, "ok": False, "detail": f"未知评测任务: {task_name}"},
+            })
+            return
+
+        prompt = task.get("description", "").strip()
+        if prompt:
+            prompt += "\n\n请在你的工作目录（当前目录）中完成上述任务。完成后简要说明你做了什么。"
+        else:
+            prompt = f"请完成评测任务: {task_name}"
+
+        await self._broadcast({
+            "type": "eval_start",
+            "data": {"task": task_name, "difficulty": task.get("difficulty", "?"), "domain": task.get("domain", "?")},
+        })
+
+        stream_buf = ""
+        result_text = ""
+        start_time = time.monotonic()
+
+        try:
+            async for event in self.agent.run(self.conversation):
+                if isinstance(event, StreamText):
+                    stream_buf += event.text
+                    result_text += event.text
+                    await self._broadcast({"type": "stream_text", "data": {"text": event.text}})
+                elif isinstance(event, ThinkingText):
+                    await self._broadcast({"type": "thinking_text", "data": {"text": event.text}})
+                elif isinstance(event, ToolUseEvent):
+                    if stream_buf:
+                        await self._broadcast({"type": "stream_end", "data": {"text": stream_buf}})
+                        stream_buf = ""
+                    await self._broadcast({"type": "tool_use", "data": {"toolId": event.tool_id, "toolName": event.tool_name, "args": event.arguments}})
+                elif isinstance(event, ToolResultEvent):
+                    if stream_buf:
+                        await self._broadcast({"type": "stream_end", "data": {"text": stream_buf}})
+                        stream_buf = ""
+                    await self._broadcast({"type": "tool_result", "data": {"toolId": event.tool_id, "toolName": event.tool_name, "output": event.output, "isError": event.is_error, "elapsed": event.elapsed}})
+                elif isinstance(event, LoopComplete):
+                    if stream_buf:
+                        await self._broadcast({"type": "stream_end", "data": {"text": stream_buf}})
+                        stream_buf = ""
+        except Exception as e:  # noqa: BLE001
+            log.warning("Eval task %s failed: %s", task_name, e)
+
+        # 验证打分
+        verify_list = task.get("verify", [])
+        ok = True
+        detail = "无验证器，按输出非空判定" if not verify_list else ""
+        failures = []
+        for spec in verify_list:
+            passed, d = _run_verifier(spec, Path(os.getcwd()), result_text)
+            if not passed:
+                ok = False
+                failures.append(d)
+        if verify_list and failures:
+            detail = " | ".join(failures)
+        elif verify_list and not failures:
+            detail = f"{len(verify_list)} 项验证全部通过"
+
+        elapsed = time.monotonic() - start_time
+        await self._broadcast({
+            "type": "eval_result",
+            "data": {
+                "task": task_name,
+                "ok": ok,
+                "detail": detail,
+                "elapsed": round(elapsed, 2),
+            },
+        })
+
+    @staticmethod
+    def _load_eval_task(task_name: str) -> dict[str, Any] | None:
+        """按名称加载 benchmarks/tasks 下的评测任务。"""
+        import sys as _sys
+        from pathlib import Path as _Path
+
+        root = _Path(__file__).resolve().parent.parent  # 项目根
+        tasks_dir = root / "benchmarks" / "tasks"
+        if not tasks_dir.exists():
+            return None
+        for p in sorted(tasks_dir.glob("*.yaml")):
+            try:
+                import yaml
+                t = yaml.safe_load(p.read_text(encoding="utf-8"))
+            except Exception:  # noqa: BLE001
+                continue
+            if t and t.get("name") == task_name:
+                return t
+        return None
 
     async def _handle_permission_mode(self, data: dict[str, Any]) -> None:
         """处理来自 Web UI 的权限模式切换请求。"""

@@ -386,11 +386,10 @@ img { max-width: 100%; display: block; }
 .chart-fill.is-now { background: linear-gradient(90deg, var(--acc-soft), var(--acc)); color: var(--bg); font-weight: 500; }
 .chart-note { color: var(--text-faint); font-size: var(--text-xs); margin-top: var(--space-2); }
 
-/* Screenshot */
-.shot-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-3);
+/* Prototype */
+.shot-single {
+  margin: 0;
+  max-width: 900px;
 }
 .shot-frame {
   border: 1px solid var(--line);
@@ -409,24 +408,6 @@ img { max-width: 100%; display: block; }
   height: auto;
   display: block;
 }
-.shot-empty {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.6rem;
-  color: var(--text-faint);
-  text-align: center;
-  background:
-    repeating-linear-gradient(0deg, transparent, transparent 23px, var(--line-soft) 24px),
-    repeating-linear-gradient(90deg, transparent, transparent 23px, var(--line-soft) 24px),
-    var(--surface);
-  font-size: var(--text-sm);
-}
-.shot-empty small { color: var(--text-faint); font-size: var(--text-xs); opacity: 0.8; }
-.shot-empty-icon { font-size: 2rem; color: var(--line); }
 figcaption {
   margin-top: var(--space-1);
   color: var(--text-faint);
@@ -512,7 +493,6 @@ figcaption {
   .hero-stats .wrap { grid-template-columns: 1fr 1fr; }
   .stat:nth-child(3) { border-left: none; }
   .stat { padding: var(--space-3) var(--space-1); }
-  .shot-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 560px) {

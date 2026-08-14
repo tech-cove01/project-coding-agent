@@ -9,7 +9,7 @@
   // ---------- 滚动渐显 ----------
   // 目标：hero 以下每个 section 的主容器，以及亮点卡 / 架构层
   const revealTargets = document.querySelectorAll(
-    "#about > .wrap, #highlights > .wrap, #architecture > .wrap, #benchmark > .wrap, #screenshot > .wrap, .cta > .wrap, .hl, .layer"
+    "#about > .wrap, #highlights > .wrap, #architecture > .wrap, #benchmark > .wrap, #prototype > .wrap, .cta > .wrap, .hl, .layer"
   );
 
   const show = (el) => el.classList.add("is-visible");

@@ -8,6 +8,8 @@ description: |
   编写一个 Python 脚本 stats.py，读取 data.csv，计算并打印 score 列的平均值。
   stats.py 运行后应校验平均值为 88.333...（90+80+95 / 3），
   若校验失败则 stats.py 以非零退出码退出。
+  注意：请务必先在当前目录创建好 data.csv 文件（内容包含上面四行数据），
+  再编写 stats.py；stats.py 需能成功读取这个已存在的 data.csv，避免因文件缺失而报错。
 difficulty: hard
 domain: data-processing
 verify:

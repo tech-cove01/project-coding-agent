@@ -10,6 +10,8 @@ build/
 .mewcode/
 .claude/
 CLAUDE.md
+.workbuddy/
+.codebuddy/
 
 # 运行时生成的数据与隐私（记忆、会话、历史、日志）
 .coding_agent/
@@ -20,6 +22,7 @@ CLAUDE.md
 # 误操作产生的空文件
 '
 
-# 评测运行时产物（report/regression 每次跑都变，不纳入版本控制）
+# 评测运行时产物（report/regression/experience 每次跑都变，不纳入版本控制）
 benchmarks/report.md
 benchmarks/regression.yaml
+benchmarks/experience.yaml

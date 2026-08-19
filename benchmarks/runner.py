@@ -45,6 +45,12 @@ if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 from benchmarks._common import make_client, require_provider  # noqa: E402
+from benchmarks._experience import (  # noqa: E402
+    add_experience,
+    build_injection_prompt,
+    confirm_experience,
+    discard_experience,
+)
 from benchmarks._verifiers import verify  # noqa: E402
 from coding_agent.agent import Agent  # noqa: E402
 from coding_agent.conversation import ConversationManager  # noqa: E402
@@ -78,8 +84,13 @@ def load_tasks(tasks_dir: Path = _TASKS_DIR) -> list[dict[str, Any]]:
             t = _load_task(p)
             t["_file"] = str(p)
             tasks.append(t)
-    # 回归集（历史失败案例）始终追加，保证不再重复犯错
-    tasks.extend(load_regression_tasks())
+    # 回归集（历史失败案例）追加，但若与 tasks 目录已有同名任务则跳过，
+    # 避免同一任务重复执行导致通过率统计重复（tasks 版本描述更新，优先采用）
+    known_names = {t.get("name") for t in tasks}
+    for reg in load_regression_tasks():
+        if reg.get("name") in known_names:
+            continue
+        tasks.append(reg)
     return tasks
 
 
@@ -112,11 +123,16 @@ def add_to_regression(task: dict[str, Any], detail: str) -> None:
 def _build_prompt(task: dict[str, Any]) -> str:
     desc = task.get("description", "").strip()
     # 任务工作在临时目录，给 agent 明确的工作位置和验收提示
-    return (
+    prompt = (
         f"{desc}\n\n"
         "请在你的工作目录（当前目录）中完成上述任务。"
         "完成后请简要说明你做了什么。"
     )
+    # 注入历史失败经验（相似任务的教训），帮助 agent 避免重复犯错
+    injection = build_injection_prompt(task)
+    if injection:
+        prompt += injection
+    return prompt
 
 
 async def _run_single_task(
@@ -220,10 +236,18 @@ def main() -> None:
             })
             if ok:
                 passed += 1
+                # 重测成功：把该任务上一轮沉淀的候选反思转正为有效经验
+                if confirm_experience(name):
+                    print(f"      (经验转正) {name}: 候选反思验证有效，转为有效经验")
             else:
                 failed += 1
                 failures_report.append((name, detail))
                 add_to_regression(task, detail)
+                # 重测失败：丢弃上一轮候选反思（证伪，避免污染记忆库），
+                # 并沉淀本轮新的候选，等待下一次重测验证
+                if discard_experience(name):
+                    print(f"      (反思丢弃) {name}: 重测未通过，丢弃上一轮候选反思")
+                add_experience(task, detail)
 
         _write_report(results, passed, failed)
         print(f"\n结果: {passed} 通过, {failed} 失败。报告见 {_REPORT_FILE.name}")

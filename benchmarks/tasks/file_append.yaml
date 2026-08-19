@@ -4,6 +4,8 @@ description: |
   再编写一个 Python 脚本 append.py，以追加模式向 log.txt 写入一行 "end"。
   append.py 运行后应校验：log.txt 恰好包含两行 "start" 和 "end"，
   若校验失败则 append.py 以非零退出码退出。
+  注意：请务必确保 append.py 中的代码语法正确、可直接运行（python append.py），
+  函数定义和调用请检查括号是否成对，避免多余的右括号导致 SyntaxError。
 difficulty: medium
 domain: file-io
 verify:

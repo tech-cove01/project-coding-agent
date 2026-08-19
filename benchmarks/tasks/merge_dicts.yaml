@@ -5,6 +5,8 @@ description: |
   相同 key 时以 d2 为准。脚本底部应包含自测：运行脚本时校验
   merge_dicts({"a":1,"b":2}, {"b":3,"c":4}) == {"a":1,"b":3,"c":4}，
   若校验失败则脚本以非零退出码退出。
+  注意：请务必确保 merge.py 中的代码是语法正确、可直接运行（python merge.py）的合法 Python，
+  函数定义和自测断言都请用单行简洁写法，避免多行断句导致的语法错误。
 difficulty: medium
 domain: coding
 verify:

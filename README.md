@@ -31,8 +31,8 @@
 - **路径沙箱**：限制文件访问边界，阻止越权读写。
 
 ### 工具与集成
-- 内置工具：bash、grep、glob、read/write/edit file、子 Agent、文件状态缓存等。
-- **MCP 支持**：stdio 与 HTTP（2025-03-26 规范）双传输，延迟加载避免 schema 注入上下文；工具名统一映射为 `mcp_{server}_{tool}`。
+- **双层工具架构**：底层内置 6 个核心工具（`ReadFile` / `WriteFile` / `EditFile` / `Bash` / `Glob` / `Grep`），负责基础文件操作与命令执行，配合五层权限与文件状态缓存；通用能力通过 MCP 接入市面 server，避免重复造轮子。
+- **MCP 支持**：stdio 与 HTTP（2025-03-26 规范）双传输，**延迟加载**按需加载工具描述，工具描述 Token 占用减少约 74%，避免 schema 注入上下文；工具名统一映射为 `mcp_{server}_{tool}`。
 - **Hooks 事件系统**：事件驱动脚本钩子，可在工具调用前后、会话生命周期等节点插入自定义逻辑。
 - **配置系统**：多 provider（OpenAI / Anthropic / 智谱 GLM 等 OpenAI 兼容接口），支持 `${ENV_VAR}` 环境变量替换与多文件分层合并。
 
@@ -74,7 +74,7 @@ coding_agent/
 ## 测试
 
 ```bash
-uv run pytest tests/    # 577 个测试
+uv run pytest tests/    # 609 个测试
 ```
 
 覆盖：Agent 主循环、上下文压缩、记忆、权限、MCP、Hooks、团队协作、子 Agent、Skills、工作树、序列化、命令系统、远程权限模式。
@@ -92,6 +92,13 @@ uv run python -m benchmarks.run_all
 | `bench_mcp_lazy` | 否（纯确定性） | MCP 延迟加载避免注入的 schema token 占比 |
 | `bench_compact_recall` | 是 | 摘要对埋点 gold facts 的召回率 |
 | `bench_parallel` | 是 | 多 worker 并行 vs 串行加速比 |
-| `runner` | 是 | **自进化闭环**：端到端真实任务回归，失败自动进回归集 |
+| `runner` | 是 | **自进化闭环**：端到端真实任务回归，失败自动进回归集 + 失败经验库 |
+
+### 自进化评测闭环
+基于 16 个真实编码任务（覆盖编码/调试/重构/多文件/测试/数据处理等）的自动化评测：任务拆分为可校验单元（文件产出 / 内容匹配 / 命令退出码），驱动 Agent 在隔离目录端到端真实执行并打分。
+
+- **回归防退化**：失败案例自动进回归集，下一轮自动重测，防止能力退化。
+- **失败经验库**（`benchmarks/_experience.py`）：失败自动沉淀为结构化反思（含失败模式与修复策略），经"重测通过"才转正为有效经验、否则丢弃（防止错误经验污染）；有效经验按领域相似度检索注入相似任务的 Prompt，避免重复犯错。
+- **量化结果**：通过率从首轮 **62.5% 提升至 87.5%**；`bench_compact_recall` 通过修复摘要模板缺陷，关键上下文保留率从 34% 提升至 100%。
 
 详细说明见 [`benchmarks/README.md`](benchmarks/README.md)。

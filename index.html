@@ -80,7 +80,7 @@
       </div>
       <div class="hero-stats">
         <div class="wrap">
-          <div class="stat"><span class="stat-num mono">609</span><span class="stat-lbl">测试通过</span></div>
+          <div class="stat"><span class="stat-num mono">624</span><span class="stat-lbl">测试通过</span></div>
           <div class="stat"><span class="stat-num mono">16</span><span class="stat-lbl">真实编码任务评测</span></div>
           <div class="stat"><span class="stat-num mono">87.5%</span><span class="stat-lbl">自进化通过率</span></div>
           <div class="stat"><span class="stat-num mono">-74%</span><span class="stat-lbl">工具描述 Token</span></div>
@@ -176,7 +176,7 @@
           <div class="hl-index mono">05</div>
           <div class="hl-body">
             <h3>双层工具架构 与 上下文优化</h3>
-            <p>底层内置 6 个核心工具（ReadFile / WriteFile / EditFile / Bash / Glob / Grep）负责文件与命令操作，配合五层权限；通用层经 MCP 接入市面 server，按需接入不造轮子。MCP 延迟加载按需加载工具描述，工具描述 Token 占用减少 74%，避免 schema 注入上下文。</p>
+            <p>底层内置 6 个核心工具（ReadFile / WriteFile / EditFile / Bash / Glob / Grep）负责文件与命令操作，配合五层权限；通用层经 MCP 接入市面 server，按需接入不造轮子。工具网关统一封装输入防护（限大小 / 分片防 OOM）与异常处理（超时兜底、指数退避重试）；MCP 延迟加载按需加载工具描述，Token 占用减少 74%，避免上下文被挤占导致推理降级。</p>
           </div>
           <div class="hl-kpi mono">-74%<br />Token 占用</div>
         </article>
@@ -273,7 +273,7 @@
       <div class="wrap">
         <div class="cta-inner">
           <h2 class="cta-title">深入源码，看它如何工作</h2>
-          <p class="cta-sub">609 个测试 · 可复现的量化评测 · 完整文档</p>
+          <p class="cta-sub">624 个测试 · 可复现的量化评测 · 完整文档</p>
           <div class="cta-actions">
             <a class="btn btn-primary" href="https://github.com/tech-cove01/project-coding-agent" target="_blank" rel="noopener">GitHub 仓库</a>
             <a class="btn btn-ghost" href="https://github.com/tech-cove01/project-coding-agent/blob/main/README.md" target="_blank" rel="noopener">阅读 README</a>

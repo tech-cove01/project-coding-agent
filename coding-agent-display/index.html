@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Coding Agent — 多 Agent 编码助手</title>
+  <meta name="description" content="基于 ReAct 与 Plan 双驱动的轻量级终端 Coding Agent：分层记忆、断点续跑、多 Agent 协作、MCP 工具生态与自进化评测。" />
+  <meta name="theme-color" content="#0f1013" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到主内容</a>
+
+  <header class="site-head">
+    <div class="wrap">
+      <a class="brand" href="#top">
+        <span class="brand-prompt">~/</span> coding-agent
+      </a>
+      <nav class="site-nav" aria-label="主导航">
+        <a href="#about">关于</a>
+        <a href="#highlights">亮点</a>
+        <a href="#architecture">架构</a>
+        <a href="#benchmark">评测</a>
+        <a class="nav-gh" href="https://github.com/tech-cove01/project-coding-agent" target="_blank" rel="noopener">GitHub ↗</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- ============ HERO ============ -->
+    <section id="top" class="hero">
+      <div class="wrap">
+        <div class="hero-grid">
+          <div class="hero-copy">
+            <p class="eyebrow mono">$ --version</p>
+            <h1 class="hero-title">
+              一个 <em>真正的</em><br />终端编码 Agent
+            </h1>
+            <p class="hero-lede">
+              基于 <strong>ReAct</strong> 与 <strong>Plan</strong> 双驱动的轻量级 Agent，具备分层记忆、任务级断点续跑、多 Agent 协作、MCP 工具生态与自进化评测能力。
+            </p>
+            <div class="hero-meta">
+              <span class="tag">Python</span>
+              <span class="tag">MCP</span>
+              <span class="tag">Multi-Agent</span>
+              <span class="tag">ReAct / Plan</span>
+              <span class="tag">Git Worktree</span>
+            </div>
+            <div class="hero-actions">
+              <a class="btn btn-primary" href="https://github.com/tech-cove01/project-coding-agent" target="_blank" rel="noopener">查看源码</a>
+              <a class="btn btn-ghost" href="#highlights">看看能做什么 ↓</a>
+            </div>
+          </div>
+
+          <div class="hero-terminal" aria-hidden="true">
+            <div class="term">
+              <div class="term-bar">
+                <span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span>
+                <span class="term-title mono">coding-agent — zsh</span>
+              </div>
+              <div class="term-body">
+                <pre class="mono">$ coding-agent
+<span class="c-md">◆</span> 已加载 <span class="c-acc">9</span> 个内置工具 · <span class="c-acc">3</span> 个 MCP 服务器 · 分层记忆就绪
+<span class="c-dim">[agent]</span> 让我分析这个代码库的结构……
+
+<span class="c-g">✔</span> 规划：读取 README → 定位入口 → 生成重构方案
+<span class="c-md">▶</span> 执行：并行读取 4 个文件 <span class="c-dim">(6ms)</span>
+<span class="c-md">▶</span> 调用 mcp_git_show · mcp_ast_query
+<span class="c-acc">→</span> <span class="c-b">memory:</span> 提取 2 条项目记忆，索引已更新
+
+<span class="c-g">✔</span> 任务完成 · 大型重构效率 <span class="c-acc">+60%</span>
+<span class="c-dim">$</span> <span class="cursor">▊</span></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="hero-stats">
+        <div class="wrap">
+          <div class="stat"><span class="stat-num mono">587</span><span class="stat-lbl">测试通过</span></div>
+          <div class="stat"><span class="stat-num mono">16</span><span class="stat-lbl">真实编码任务评测</span></div>
+          <div class="stat"><span class="stat-num mono">77.3%</span><span class="stat-lbl">自进化通过率</span></div>
+          <div class="stat"><span class="stat-num mono">-74%</span><span class="stat-lbl">工具描述 Token</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ ABOUT ============ -->
+    <section id="about" class="section">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="section-label mono">01 // about</p>
+          <h2 class="section-title">它是什么？</h2>
+        </div>
+        <div class="about-grid">
+          <p class="about-lead">
+            一个 <strong>Python 实现</strong>的多 Agent 编码助手，对标 Claude Code / Cursor 的编码工作流。基于<strong>流式工具调用</strong>、<strong>分层记忆</strong>、<strong>多 Agent 协作</strong>与<strong>精细权限控制</strong>构建，支持终端 TUI 与 Web 远程控制两种界面。
+          </p>
+          <p class="about-sub">
+            核心源码可复现，量化评测可复现——不空谈能力，用 <strong>benchmarks</strong> 实测说话。
+          </p>
+        </div>
+        <div class="pillars">
+          <div class="pillar">
+            <span class="pillar-icon mono">流</span>
+            <h3>流式工具调用</h3>
+            <p>LLM 输出边生成边执行，并发安全的调用合并为并行批次，减少往返时延。</p>
+          </div>
+          <div class="pillar">
+            <span class="pillar-icon mono">层</span>
+            <h3>分层记忆</h3>
+            <p>近期原文 + 结构化摘要，跨会话持久化，压缩边界精确恢复。</p>
+          </div>
+          <div class="pillar">
+            <span class="pillar-icon mono">协</span>
+            <h3>多 Agent 协作</h3>
+            <p>coordinator 编排 + Worktree 文件级隔离，大型重构效率提升约 60%。</p>
+          </div>
+          <div class="pillar">
+            <span class="pillar-icon mono">权</span>
+            <h3>五层权限</h3>
+            <p>危险命令拦截、路径沙箱、规则引擎，权限弹窗从 30 次降至 5 次。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ HIGHLIGHTS ============ -->
+    <section id="highlights" class="section section-tint">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="section-label mono">02 // highlights</p>
+          <h2 class="section-title">核心能力</h2>
+        </div>
+
+        <article class="hl">
+          <div class="hl-index mono">01</div>
+          <div class="hl-body">
+            <h3>分层记忆 与 任务级断点续跑</h3>
+            <p>两层渐进式上下文压缩（近期原文保留 + 结构化摘要，含净收益校验）；打通"LLM 提取 → 记忆块解析 → 按类型路由 → 索引写入"持久化链路，修复自动记忆"只收集不落盘"缺陷。实现任务级 Checkpoint，每轮工具执行后落盘完整对话，中断后恢复上下文继续推进。</p>
+          </div>
+          <div class="hl-kpi mono">Checkpoint<br />断点续跑</div>
+        </article>
+
+        <article class="hl">
+          <div class="hl-index mono">02</div>
+          <div class="hl-body">
+            <h3>端到端自进化评测闭环</h3>
+            <p>基于 16 个真实编码任务（7 领域，easy/medium/hard）的评测流水线，任务拆分为可校验验证器（文件产出 / 内容匹配 / 命令退出码），驱动 Agent 隔离执行并打分；失败案例自动进回归集，下一轮自动重测。</p>
+          </div>
+          <div class="hl-kpi mono">62.5% → 77.3%<br />两轮实测</div>
+        </article>
+
+        <article class="hl">
+          <div class="hl-index mono">03</div>
+          <div class="hl-body">
+            <h3>多 Agent 协作 与 Worktree 文件级隔离</h3>
+            <p>coordinator 模式编排多子 Agent（规划 → 并行研究 → 综合 → 实现 → 独立验证），各子 Agent 运行在独立 Git Worktree 实现文件级隔离；直接解析 .git 免起子进程快速恢复（100ms → 1ms），symlink 共享大依赖，三重守卫自动清理陈旧工作树。</p>
+          </div>
+          <div class="hl-kpi mono">+60%<br />重构效率</div>
+        </article>
+
+        <article class="hl">
+          <div class="hl-index mono">04</div>
+          <div class="hl-body">
+            <h3>五层安全隔离 与 自主执行</h3>
+            <p>五层权限确认（危险命令拦截 / 路径沙箱 / 规则引擎 / 会话级放行 / 模式兜底），权限确认弹窗从平均 30 次降至 5 次以内；支持内核级隔离沙箱兜底。</p>
+          </div>
+          <div class="hl-kpi mono">30 → 5<br />确认弹窗</div>
+        </article>
+
+        <article class="hl">
+          <div class="hl-index mono">05</div>
+          <div class="hl-body">
+            <h3>MCP 工具延迟加载 与 上下文优化</h3>
+            <p>MCP 延迟加载按需加载工具描述，工具描述 Token 占用减少 74%；支持 stdio 与 HTTP 双传输，工具名统一映射，避免 schema 注入上下文。</p>
+          </div>
+          <div class="hl-kpi mono">-74%<br />Token 占用</div>
+        </article>
+      </div>
+    </section>
+
+    <!-- ============ ARCHITECTURE ============ -->
+    <section id="architecture" class="section">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="section-label mono">03 // architecture</p>
+          <h2 class="section-title">模块架构</h2>
+        </div>
+        <div class="arch">
+          <div class="arch-layers" role="list" aria-label="分层架构">
+            <div class="layer" style="--i:0">
+              <span class="layer-name mono">UI 层</span>
+              <span class="layer-desc">终端 TUI (Textual) · Web 远程 (18888)</span>
+            </div>
+            <div class="layer" style="--i:1">
+              <span class="layer-name mono">Agent 核心</span>
+              <span class="layer-desc">agent.py 主循环 · 流式工具执行 · 事件流</span>
+            </div>
+            <div class="layer" style="--i:2">
+              <span class="layer-name mono">智能层</span>
+              <span class="layer-desc">context 压缩 · memory 记忆 · teams 协作</span>
+            </div>
+            <div class="layer" style="--i:3">
+              <span class="layer-name mono">工具层</span>
+              <span class="layer-desc">内置工具 · MCP (stdio/HTTP) · hooks</span>
+            </div>
+            <div class="layer" style="--i:4">
+              <span class="layer-name mono">安全层</span>
+              <span class="layer-desc">五层权限 · 危险命令检测 · 路径沙箱</span>
+            </div>
+            <div class="layer" style="--i:5">
+              <span class="layer-name mono">存储层</span>
+              <span class="layer-desc">会话 JSONL · MEMORY.md · 记忆索引</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ BENCHMARK ============ -->
+    <section id="benchmark" class="section section-tint">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="section-label mono">04 // benchmark</p>
+          <h2 class="section-title">自进化评测</h2>
+        </div>
+        <div class="bench">
+          <div class="bench-copy">
+            <p>一套 <strong>16 个真实编码任务</strong>（7 领域 · easy/medium/hard）的回归评测流水线。任务被拆分为<strong>可校验验证器</strong>，驱动 Agent 在隔离目录执行并打分；<strong>失败案例自动进入回归集</strong>，下一轮自动重测。</p>
+            <ul class="bench-list">
+              <li><strong>文件产出</strong> —— 目标文件是否生成</li>
+              <li><strong>内容匹配</strong> —— 产物内容是否符合要求</li>
+              <li><strong>命令退出码</strong> —— 运行结果是否成功</li>
+            </ul>
+          </div>
+          <div class="bench-chart" aria-hidden="true">
+            <div class="chart-row">
+              <span class="chart-lbl mono">round 1</span>
+              <div class="chart-track"><div class="chart-fill" data-w="62.5"><span class="mono">62.5%</span></div></div>
+            </div>
+            <div class="chart-row">
+              <span class="chart-lbl mono">round 2</span>
+              <div class="chart-track"><div class="chart-fill is-now" data-w="77.3"><span class="mono">77.3%</span></div></div>
+            </div>
+            <p class="chart-note mono">10/16 → 17/22 · 失败 6 → 5 · 4 个回归转正</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ PROTOTYPE ============ -->
+    <section id="prototype" class="section">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="section-label mono">05 // prototype</p>
+          <h2 class="section-title">原型设计</h2>
+        </div>
+        <figure class="shot shot-single">
+          <div class="shot-frame shot-frame-img">
+            <img src="architecture.png" alt="Coding Agent 工作流编排原型图" loading="lazy" width="1600" height="900" />
+          </div>
+          <figcaption class="mono">工作流编排原型 · Dify</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- ============ CTA ============ -->
+    <section class="section cta">
+      <div class="wrap">
+        <div class="cta-inner">
+          <h2 class="cta-title">深入源码，看它如何工作</h2>
+          <p class="cta-sub">587 个测试 · 可复现的量化评测 · 完整文档</p>
+          <div class="cta-actions">
+            <a class="btn btn-primary" href="https://github.com/tech-cove01/project-coding-agent" target="_blank" rel="noopener">GitHub 仓库</a>
+            <a class="btn btn-ghost" href="https://github.com/tech-cove01/project-coding-agent/blob/main/README.md" target="_blank" rel="noopener">阅读 README</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-foot">
+    <div class="wrap">
+      <p class="mono">built with <span class="c-acc">coding-agent</span> · powered by self-evolution</p>
+      <p class="foot-links">
+        <a href="https://github.com/tech-cove01" target="_blank" rel="noopener">GitHub</a>
+        <a href="mailto:1908369180@qq.com">邮箱</a>
+      </p>
+    </div>
+  </footer>
+
+  <script src="js/main.js"></script>
+</body>
+</html>

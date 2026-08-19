@@ -80,9 +80,9 @@
       </div>
       <div class="hero-stats">
         <div class="wrap">
-          <div class="stat"><span class="stat-num mono">587</span><span class="stat-lbl">测试通过</span></div>
+          <div class="stat"><span class="stat-num mono">609</span><span class="stat-lbl">测试通过</span></div>
           <div class="stat"><span class="stat-num mono">16</span><span class="stat-lbl">真实编码任务评测</span></div>
-          <div class="stat"><span class="stat-num mono">77.3%</span><span class="stat-lbl">自进化通过率</span></div>
+          <div class="stat"><span class="stat-num mono">87.5%</span><span class="stat-lbl">自进化通过率</span></div>
           <div class="stat"><span class="stat-num mono">-74%</span><span class="stat-lbl">工具描述 Token</span></div>
         </div>
       </div>
@@ -148,10 +148,10 @@
         <article class="hl">
           <div class="hl-index mono">02</div>
           <div class="hl-body">
-            <h3>端到端自进化评测闭环</h3>
-            <p>基于 16 个真实编码任务（7 领域，easy/medium/hard）的评测流水线，任务拆分为可校验验证器（文件产出 / 内容匹配 / 命令退出码），驱动 Agent 隔离执行并打分；失败案例自动进回归集，下一轮自动重测。</p>
+            <h3>端到端自进化评测 + 失败经验库</h3>
+            <p>基于 16 个真实编码任务（7 领域，easy/medium/hard）的评测流水线，任务拆分为可校验验证器（文件产出 / 内容匹配 / 命令退出码），驱动 Agent 隔离执行并打分。失败案例自动进回归集，并沉淀为结构化经验——重测通过才转正注入、否则丢弃（防污染）；相似任务按领域相似度检索注入历史教训，避免重复犯错。</p>
           </div>
-          <div class="hl-kpi mono">62.5% → 77.3%<br />两轮实测</div>
+          <div class="hl-kpi mono">62.5% → 87.5%<br />自进化通过率</div>
         </article>
 
         <article class="hl">
@@ -175,8 +175,8 @@
         <article class="hl">
           <div class="hl-index mono">05</div>
           <div class="hl-body">
-            <h3>MCP 工具延迟加载 与 上下文优化</h3>
-            <p>MCP 延迟加载按需加载工具描述，工具描述 Token 占用减少 74%；支持 stdio 与 HTTP 双传输，工具名统一映射，避免 schema 注入上下文。</p>
+            <h3>双层工具架构 与 上下文优化</h3>
+            <p>底层内置 6 个核心工具（ReadFile / WriteFile / EditFile / Bash / Glob / Grep）负责文件与命令操作，配合五层权限；通用层经 MCP 接入市面 server，按需接入不造轮子。MCP 延迟加载按需加载工具描述，工具描述 Token 占用减少 74%，避免 schema 注入上下文。</p>
           </div>
           <div class="hl-kpi mono">-74%<br />Token 占用</div>
         </article>
@@ -244,9 +244,9 @@
             </div>
             <div class="chart-row">
               <span class="chart-lbl mono">round 2</span>
-              <div class="chart-track"><div class="chart-fill is-now" data-w="77.3"><span class="mono">77.3%</span></div></div>
+              <div class="chart-track"><div class="chart-fill is-now" data-w="87.5"><span class="mono">87.5%</span></div></div>
             </div>
-            <p class="chart-note mono">10/16 → 17/22 · 失败 6 → 5 · 4 个回归转正</p>
+            <p class="chart-note mono">通过率 62.5% → 87.5% · 失败经验沉淀注入 · 回归防退化</p>
           </div>
         </div>
       </div>
@@ -273,7 +273,7 @@
       <div class="wrap">
         <div class="cta-inner">
           <h2 class="cta-title">深入源码，看它如何工作</h2>
-          <p class="cta-sub">587 个测试 · 可复现的量化评测 · 完整文档</p>
+          <p class="cta-sub">609 个测试 · 可复现的量化评测 · 完整文档</p>
           <div class="cta-actions">
             <a class="btn btn-primary" href="https://github.com/tech-cove01/project-coding-agent" target="_blank" rel="noopener">GitHub 仓库</a>
             <a class="btn btn-ghost" href="https://github.com/tech-cove01/project-coding-agent/blob/main/README.md" target="_blank" rel="noopener">阅读 README</a>

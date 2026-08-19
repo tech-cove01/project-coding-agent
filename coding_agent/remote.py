@@ -460,7 +460,7 @@ class RemoteServer:
                 else:
                     tool_names = [
                         t.name for t in self.registry.list_tools()
-                        if t.name.startswith(f"mcp__{srv_info.name}__")
+                        if t.name.startswith(f"mcp_{srv_info.name}_")
                     ]
                     if tool_names:
                         section += "Available tools: " + ", ".join(tool_names)

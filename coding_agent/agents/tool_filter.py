@@ -74,7 +74,7 @@ COORDINATOR_MODE_ALLOWED_TOOLS: frozenset[str] = frozenset({
 
 
 def _is_mcp_tool(name: str) -> bool:
-    return name.startswith("mcp__")
+    return name.startswith("mcp_")
 
 
 def resolve_agent_tools(

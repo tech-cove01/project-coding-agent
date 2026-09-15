@@ -249,8 +249,8 @@
 | `463ae21` | lead 收件箱地址统一（唯一定义 `LEAD_INBOX` + 收件人解析收敛一份）；shutdown 语义收敛到唯一定义处（两种表达都认）并接进生产路径 |
 | `340bf90` | 任务板一致性（文件锁 + 原子写 + **写前重载**）；指派/改派 **push 通知**；投递收敛（`TeamManager.deliver`） |
 | `80f53e7` | 队友空闲标记**下沉到生产方**（修 CLI 模式 `TeamDelete` 失败）；队友改**长驻轮询**（消除 60s 窗口与假成功）；实现 `TaskStop`；CLI 入口改用 `drain_notifications`（修漏报后台任务完成） |
-| （未提交） | **① 队友收件箱键统一为 `agent_id`** —— `spawn_inprocess` 的注入/轮询不再用队友名字；参数改名 `inbox_key`；模块 docstring 写死该不变量；回归测试 `TestTeammateInboxKeyConsistency` |
-| （未提交） | **② 任务板指派通知修正** —— 只在 `assignee` **真的变了**且**不是指派给自己**时才 push（原来只判断非空）；`SharedTaskStore.update()` 改为返回 `TaskUpdateResult`、变更在**锁内**判定；`TaskUpdateTool` 增加 `agent_name`；回归测试 `test_task_update_same_assignee_does_not_renotify` / `test_task_update_assign_to_self_does_not_notify` |
+| `f54f4e0` | **① 队友收件箱键统一为 `agent_id`** —— `spawn_inprocess` 的注入/轮询不再用队友名字；参数改名 `inbox_key`；模块 docstring 写死该不变量；回归测试 `TestTeammateInboxKeyConsistency` |
+| `f54f4e0` | **② 任务板指派通知修正** —— 只在 `assignee` **真的变了**且**不是指派给自己**时才 push（原来只判断非空）；`SharedTaskStore.update()` 改为返回 `TaskUpdateResult`、变更在**锁内**判定；`TaskUpdateTool` 增加 `agent_name`；回归测试 `test_task_update_same_assignee_does_not_renotify` / `test_task_update_assign_to_self_does_not_notify` |
 
 **贯穿三次修复的同一条原则**：
 > **同一语义只能有一个定义处；能靠"位置 / 结构"消除遗漏，就不要靠"每个调用方记得"。**

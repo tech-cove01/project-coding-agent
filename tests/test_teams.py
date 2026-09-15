@@ -627,6 +627,159 @@ class TestTaskBoardNotification:
             assert "重构模块" in msgs[0].content
 
 # =====================================================================
+# 4.4 队友生命周期 + TaskStop（回归测试）
+# =====================================================================
+#
+# P0-1：空闲标记此前只由 TUI 入口做 → CLI 模式下队友永远「活跃」，
+#       TeamDelete 一直报「有活跃成员」而删不掉。
+# P0-2：队友空闲期此前只有 60 秒窗口，窗口过后发给它的消息静默滞留，
+#       而 SendMessage 仍返回「已发送」（假成功）。
+# P0-3：TaskStop 被 coordinator 提示词承诺，但工具不存在。
+
+def _make_team(tmp_dir, name, lead_agent_id="lead-z"):
+    """在 patch 了 Path.home 的上下文里创建一个团队。"""
+    from coding_agent.teams.manager import TeamManager
+    tm = TeamManager()
+    team = tm.create_team(name, lead_agent_id=lead_agent_id, is_interactive=False)
+    return tm, team
+
+def _make_team_agent(team_manager, team_name, agent_id="alice-id-1"):
+    agent = MagicMock()
+    agent.agent_id = agent_id
+    agent.team_name = team_name
+    agent.total_input_tokens = 0
+    agent.total_output_tokens = 0
+    agent.run_to_completion = AsyncMock(return_value="done")
+    agent._team_manager = team_manager
+    return agent
+
+def _register_alice(team_manager, team_name, agent_id="alice-id-1"):
+    team_manager.register_member(team_name, TeammateInfo(
+        name="alice", agent_id=agent_id, agent_type="worker",
+        model="", worktree_path="", backend_type="in-process", is_active=True,
+    ))
+
+class TestTeammateLifecycle:
+
+    @pytest.mark.asyncio
+    async def test_idle_marking_is_producer_owned(self, tmp_dir):
+        """P0-1：队友空闲标记由「生产方」完成，不依赖某个入口。"""
+        from coding_agent.agents import task_manager as tm_mod
+        from coding_agent.agents.task_manager import TaskManager
+
+        with patch("coding_agent.teams.models.Path.home", return_value=Path(tmp_dir)), \
+             patch.object(tm_mod, "_IDLE_POLL_SECONDS", 0.01):
+            tm_team, team = _make_team(tmp_dir, "t-idle-own")
+            _register_alice(tm_team, team.name)
+            agent = _make_team_agent(tm_team, team.name)
+
+            tm = TaskManager()
+            task_id = tm.launch(agent, "initial task")
+            task = tm._async_tasks[task_id]
+
+            await asyncio.sleep(0.1)
+
+            # 没有任何入口来调 on_teammate_completed，队友也已经被标记空闲
+            assert tm_team.get_team(team.name).get_member("alice").is_active is False
+            # 空闲后仍留在团队里（长驻），并且没有被取消
+            assert not task.done()
+
+            tm_team.delete_team(team.name)
+            await asyncio.wait_for(task, timeout=2)
+
+    @pytest.mark.asyncio
+    async def test_teammate_lives_until_team_deleted(self, tmp_dir):
+        """P0-2：空闲期不设固定时长上限；团队删除后队友退出。"""
+        from coding_agent.agents import task_manager as tm_mod
+        from coding_agent.agents.task_manager import TaskManager
+
+        with patch("coding_agent.teams.models.Path.home", return_value=Path(tmp_dir)), \
+             patch.object(tm_mod, "_IDLE_POLL_SECONDS", 0.01):
+            tm_team, team = _make_team(tmp_dir, "t-longlived")
+            agent = _make_team_agent(tm_team, team.name)
+
+            tm = TaskManager()
+            task_id = tm.launch(agent, "initial task")
+            task = tm._async_tasks[task_id]
+
+            # 跑过远超旧「60 秒窗口」比例的轮询次数后仍在待命
+            await asyncio.sleep(0.2)
+            assert not task.done()
+
+            tm_team.delete_team(team.name)
+            await asyncio.wait_for(task, timeout=2)
+
+class TestTaskStop:
+
+    @pytest.mark.asyncio
+    async def test_cancel_by_agent(self):
+        from coding_agent.agents.task_manager import TaskManager
+
+        agent = MagicMock()
+        agent.agent_id = "a1"
+        agent.total_input_tokens = 0
+        agent.total_output_tokens = 0
+
+        async def _long(*_a, **_kw):
+            await asyncio.sleep(30)
+
+        agent.run_to_completion = AsyncMock(side_effect=_long)
+
+        tm = TaskManager()
+        task_id = tm.launch(agent, "long task")
+        await asyncio.sleep(0.05)
+
+        assert tm.cancel_by_agent("a1") is True
+        await asyncio.sleep(0.05)          # 取消是异步的，让出控制权后状态才落地
+        assert tm.get(task_id).status == "cancelled"
+        # 已停止后再停返回 False
+        assert tm.cancel_by_agent("a1") is False
+        # 未注册的 agent 返回 False
+        assert tm.cancel_by_agent("nobody") is False
+
+    @pytest.mark.asyncio
+    async def test_task_stop_resolves_teammate_name(self, tmp_dir):
+        from coding_agent.agents.task_manager import TaskManager
+        from coding_agent.tools.task_stop import TaskStopParams, TaskStopTool
+
+        with patch("coding_agent.teams.models.Path.home", return_value=Path(tmp_dir)):
+            tm_team, team = _make_team(tmp_dir, "t-stop")
+            _register_alice(tm_team, team.name)
+
+            agent = MagicMock()
+            agent.agent_id = "alice-id-1"
+            agent.total_input_tokens = 0
+            agent.total_output_tokens = 0
+
+            async def _long(*_a, **_kw):
+                await asyncio.sleep(30)
+
+            agent.run_to_completion = AsyncMock(side_effect=_long)
+
+            tm = TaskManager()
+            tm.launch(agent, "x")
+            await asyncio.sleep(0.05)
+
+            res = await TaskStopTool(tm, tm_team).execute(
+                TaskStopParams(target="alice")
+            )
+
+            assert res.is_error is False
+            assert "stopped" in res.output
+
+    @pytest.mark.asyncio
+    async def test_task_stop_unknown_target_is_not_error(self):
+        from coding_agent.agents.task_manager import TaskManager
+        from coding_agent.tools.task_stop import TaskStopParams, TaskStopTool
+
+        res = await TaskStopTool(TaskManager(), None).execute(
+            TaskStopParams(target="nobody")
+        )
+
+        assert res.is_error is False
+        assert "No running worker" in res.output
+
+# =====================================================================
 # 5. Backend Detection（后端探测）
 # =====================================================================
 

@@ -12,6 +12,10 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+# 队友空闲期的轮询间隔（秒）。空闲期**不设固定时长上限**——队友是「长驻」的，
+# 一直待命到团队被删除或收到 shutdown 请求（见 _run_background）。
+_IDLE_POLL_SECONDS = 1.0
+
 
 @dataclass
 class ProgressInfo:
@@ -42,6 +46,8 @@ class TaskManager:
         self._tasks: dict[str, BackgroundTask] = {}
         self._notify_queue: asyncio.Queue[str] = asyncio.Queue()
         self._async_tasks: dict[str, asyncio.Task[None]] = {}
+        # agent_id -> task_id：用于按 agent 定位任务（例如 TaskStop 停止某个 worker）
+        self._agent_tasks: dict[str, str] = {}
 
 
     def launch(
@@ -59,6 +65,10 @@ class TaskManager:
             task=task,
         )
         self._tasks[task_id] = bg
+
+        agent_id = getattr(agent, "agent_id", "")
+        if agent_id:
+            self._agent_tasks[agent_id] = task_id
 
         async_task = asyncio.create_task(
             self._run_background(task_id, fork_conversation)
@@ -85,20 +95,27 @@ class TaskManager:
             bg.status = "completed"
 
             if bg.agent.team_name and bg.agent._team_manager:
-                mailbox = bg.agent._team_manager.get_mailbox(bg.agent.team_name)
+                team_manager = bg.agent._team_manager
+                mailbox = team_manager.get_mailbox(bg.agent.team_name)
                 if mailbox:
-                    from coding_agent.teams.mailbox import create_message, partition_shutdown
-                    from coding_agent.teams.models import LEAD_INBOX
-                    msg = create_message(
-                        from_agent=bg.name,
-                        to_agent=LEAD_INBOX,
-                        content=f"[idle] {bg.name}: completed initial task",
-                        summary=f"{bg.name} idle",
-                    )
-                    mailbox.write(LEAD_INBOX, msg)
+                    from coding_agent.teams.mailbox import partition_shutdown
 
-                    for _ in range(60):
-                        await asyncio.sleep(1)
+                    # 标记空闲 + 通知 lead：统一走 TeamManager.on_teammate_completed。
+                    # 放在「生产方」（这里）而不是各入口的通知聚合里，保证 TUI / CLI
+                    # 等所有入口行为一致——否则总有人漏掉，队友永远不算空闲，
+                    # TeamDelete 就会一直报「有活跃成员」而删不掉团队。
+                    team_manager.on_teammate_completed(bg.agent.agent_id)
+
+                    # 队友是「长驻」的：一直待命，直到团队被删除或收到 shutdown。
+                    # 刻意不设固定时长上限——一旦窗口过期，发给它的消息会静默滞留
+                    # 在邮箱里，而 SendMessage 仍返回「已发送」（假成功）。
+                    while True:
+                        await asyncio.sleep(_IDLE_POLL_SECONDS)
+
+                        # 团队被删除 → 队友随之退出（避免永久驻留）
+                        if team_manager.get_team(bg.agent.team_name) is None:
+                            break
+
                         msgs = mailbox.consume(bg.agent.agent_id)
                         if not msgs:
                             continue
@@ -116,13 +133,8 @@ class TaskManager:
                         )
                         result = await bg.agent.run_to_completion(prompt)
                         bg.result = result
-                        msg = create_message(
-                            from_agent=bg.name,
-                            to_agent=LEAD_INBOX,
-                            content=f"[idle] {bg.name}: completed follow-up",
-                            summary=f"{bg.name} idle",
-                        )
-                        mailbox.write(LEAD_INBOX, msg)
+                        # 每完成一轮都重新标记空闲并通知 lead
+                        team_manager.on_teammate_completed(bg.agent.agent_id)
 
         except asyncio.CancelledError:
             bg.status = "cancelled"
@@ -136,7 +148,21 @@ class TaskManager:
             bg.progress.input_tokens = bg.agent.total_input_tokens
             bg.progress.output_tokens = bg.agent.total_output_tokens
             self._async_tasks.pop(task_id, None)
+            agent_id = getattr(bg.agent, "agent_id", "")
+            if self._agent_tasks.get(agent_id) == task_id:
+                self._agent_tasks.pop(agent_id, None)
             await self._notify_queue.put(task_id)
+
+
+    def cancel_by_agent(self, agent_id: str) -> bool:
+        """按 agent_id 停止其后台任务（供 TaskStop 工具使用）。
+
+        返回 False 表示该 agent 没有正在运行的后台任务。
+        """
+        task_id = self._agent_tasks.get(agent_id)
+        if task_id is None:
+            return False
+        return self.cancel(task_id)
 
 
     def adopt_running(

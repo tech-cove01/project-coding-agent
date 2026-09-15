@@ -225,6 +225,10 @@ async def _run_prompt(config, permission_mode, hook_engine, prompt: str, output_
     ))
     registry.register(TeamDeleteTool(team_manager=team_manager, parent_agent=agent))
 
+    # TaskStop —— 停止正在运行的 worker（coordinator 提示词承诺的能力）
+    from coding_agent.tools.task_stop import TaskStopTool
+    registry.register(TaskStopTool(task_manager, team_manager))
+
     def drain_notifications() -> list[str]:
         notes: list[str] = []
         for t in task_manager.poll_completed():
@@ -236,10 +240,10 @@ async def _run_prompt(config, permission_mode, hook_engine, prompt: str, output_
         notes.extend(team_manager.drain_lead_mailbox())
         return notes
 
-    def drain_mailbox_only() -> list[str]:
-        return team_manager.drain_lead_mailbox()
-
-    agent.notification_fn = drain_mailbox_only
+    # 通知聚合必须同时包含「后台任务完成」与「团队邮箱」：
+    # 之前只挂了 drain_mailbox_only，导致 CLI 模式下后台任务完成永远不会
+    # 回投给模型（TUI 与 CLI 两条入口行为不一致）。
+    agent.notification_fn = drain_notifications
 
     # 使用事件驱动的 agent.run()，支持 text 和 stream-json 两种输出格式
     conv = ConversationManager()

@@ -815,6 +815,10 @@ class CodingAgent(App):
         )
         self.registry.register(team_delete_tool)
 
+        # TaskStop —— 停止正在运行的 worker（coordinator 提示词承诺的能力）
+        from coding_agent.tools.task_stop import TaskStopTool
+        self.registry.register(TaskStopTool(self.task_manager, self.team_manager))
+
         agent_catalog = self.agent_loader.list_agents()
         if agent_catalog:
             lines = [

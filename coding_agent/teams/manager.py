@@ -174,6 +174,15 @@ class TeamManager:
             return LEAD_INBOX
         return AgentNameRegistry.instance().resolve(to)
 
+    def resolve_agent_id(self, to: str) -> str | None:
+        """把名字/ID 解析成**真实 agent_id**。
+
+        注意与 ``resolve_recipient`` 的区别：后者返回的是**收件箱键**
+        （``lead`` 是固定键），这里要的是真实 agent_id —— 用于"按 agent 定位"
+        的场景，例如 TaskStop 停止某个 worker。
+        """
+        return AgentNameRegistry.instance().resolve(to)
+
     def wake_pane(self, agent_id: str) -> None:
         """唤醒阻塞在轮询里的面板队友（tmux/iTerm2）。进程内队友无需唤醒。"""
         pane_id = self.get_pane_id(agent_id)

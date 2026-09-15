@@ -31,6 +31,32 @@ class MailboxMessage:
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
 
+# shutdown 消息的内容前缀（对齐 Go 的 ShutdownPrefix）。
+#
+# 关闭请求有两种**等价**的表达方式，二者都必须被识别，否则会出现"发得出、不生效"：
+#   1) message_type="shutdown_request" —— 结构化声明（SendMessage 工具支持）
+#   2) content 以 "[shutdown]" 开头     —— 文本前缀（便于人读 / 直接手写邮箱文件）
+SHUTDOWN_PREFIX = "[shutdown]"
+
+
+def is_shutdown_request(msg: MailboxMessage) -> bool:
+    """判断一条邮箱消息是否为关闭请求（两种表达方式都认）。"""
+    if msg.message_type == "shutdown_request":
+        return True
+    return msg.content.strip().startswith(SHUTDOWN_PREFIX)
+
+
+def partition_shutdown(
+    messages: list[MailboxMessage],
+) -> tuple[list[MailboxMessage], bool]:
+    """把消息拆成 (普通消息, 是否包含关闭请求)。
+
+    所有"从邮箱取消息"的循环都应走这个函数，避免各处各写一套判定逻辑。
+    """
+    keep = [m for m in messages if not is_shutdown_request(m)]
+    return keep, len(keep) != len(messages)
+
+
 class Mailbox:
     """Single-file mailbox with file locking, one JSON array per agent.
 

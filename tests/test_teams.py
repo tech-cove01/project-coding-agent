@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from coding_agent.teams.models  import (
+    LEAD_INBOX,
     AgentTeam,
     BackendType,
     TeammateInfo,
@@ -328,6 +329,153 @@ class TestAgentNameRegistry:
         r1 = AgentNameRegistry.instance()
         r2 = AgentNameRegistry.instance()
         assert r1 is r2
+
+# =====================================================================
+# 4.1 lead 收件箱地址一致性（回归测试）
+# =====================================================================
+#
+# 历史问题：teammate 上报 idle 时写死 "lead"，落到 mailbox/lead.json；而
+# drain_lead_mailbox 用 team.lead_agent_id（uuid）去读，读的是另一个文件，
+# 导致消息永久滞留、lead 根本收不到。以下三条用例分别覆盖三个写入点。
+
+class TestLeadInboxConsistency:
+
+    def test_send_message_to_lead_is_delivered(self, tmp_dir):
+        from coding_agent.teams.manager import TeamManager
+        from coding_agent.tools.send_message import SendMessageParams, SendMessageTool
+
+        with patch("coding_agent.teams.models.Path.home", return_value=Path(tmp_dir)):
+            tm = TeamManager()
+            team = tm.create_team("t-send", lead_agent_id="lead-uuid-001", is_interactive=False)
+            mailbox = tm.get_mailbox(team.name)
+
+            tool = SendMessageTool(tm, team.name, "alice-id-1", "alice")
+            result = asyncio.run(
+                tool.execute(SendMessageParams(to="lead", message="接口已确定", summary="接口确定"))
+            )
+
+            assert result.is_error is False
+            assert len(mailbox.read(LEAD_INBOX)) == 1
+
+            notes = tm.drain_lead_mailbox()
+            assert len(notes) == 1
+            assert "alice" in notes[0]
+            assert "接口已确定" in notes[0]
+
+    def test_teammate_idle_write_is_drained(self, tmp_dir):
+        # 模拟 task_manager / spawn_inprocess 的写法：直接写 LEAD_INBOX
+        from coding_agent.teams.manager import TeamManager
+
+        with patch("coding_agent.teams.models.Path.home", return_value=Path(tmp_dir)):
+            tm = TeamManager()
+            team = tm.create_team("t-idle", lead_agent_id="lead-uuid-002", is_interactive=False)
+            mailbox = tm.get_mailbox(team.name)
+
+            mailbox.write(
+                LEAD_INBOX,
+                create_message(
+                    from_agent="bob",
+                    to_agent=LEAD_INBOX,
+                    content="[idle] bob: completed initial task",
+                    summary="bob idle",
+                ),
+            )
+
+            notes = tm.drain_lead_mailbox()
+            assert len(notes) == 1
+            assert "bob" in notes[0]
+            # 消费后不重复投递
+            assert tm.drain_lead_mailbox() == []
+
+    def test_set_member_idle_is_drained(self, tmp_dir):
+        from coding_agent.teams.manager import TeamManager
+
+        with patch("coding_agent.teams.models.Path.home", return_value=Path(tmp_dir)):
+            tm = TeamManager()
+            team = tm.create_team("t-setidle", lead_agent_id="lead-uuid-003", is_interactive=False)
+            tm.register_member(team.name, TeammateInfo(
+                name="carol", agent_id="carol-id-1", agent_type="worker",
+                model="", worktree_path="", backend_type="in-process", is_active=True,
+            ))
+
+            tm.set_member_idle(team.name, "carol")
+
+            notes = tm.drain_lead_mailbox()
+            assert len(notes) == 1
+            assert "carol" in notes[0]
+
+# =====================================================================
+# 4.2 shutdown 语义（回归测试）
+# =====================================================================
+#
+# 历史问题：shutdown 有两种表达（message_type="shutdown_request" 与
+# "[shutdown]" 内容前缀），但只有前缀被识别；而且生产路径 TaskManager 的
+# 待命轮询里根本没有 shutdown 判定，关闭请求会被当成新一轮 prompt。
+
+class TestShutdownHandling:
+
+    def test_is_shutdown_request_by_type(self):
+        from coding_agent.teams.mailbox import create_message, is_shutdown_request
+        msg = create_message(
+            from_agent="lead", to_agent="alice",
+            content="stop now", message_type="shutdown_request",
+        )
+        assert is_shutdown_request(msg) is True
+
+    def test_is_shutdown_request_by_prefix(self):
+        from coding_agent.teams.mailbox import create_message, is_shutdown_request
+        msg = create_message(from_agent="lead", to_agent="alice", content="[shutdown] stop")
+        assert is_shutdown_request(msg) is True
+
+    def test_normal_message_is_not_shutdown(self):
+        from coding_agent.teams.mailbox import create_message, is_shutdown_request
+        msg = create_message(from_agent="lead", to_agent="alice", content="please do X")
+        assert is_shutdown_request(msg) is False
+
+    def test_partition_shutdown(self):
+        from coding_agent.teams.mailbox import create_message, partition_shutdown
+        shutdown = create_message("lead", "alice", "stop", message_type="shutdown_request")
+        normal = create_message("lead", "alice", "do X")
+
+        keep, has_shutdown = partition_shutdown([shutdown, normal])
+        assert has_shutdown is True
+        assert [m.content for m in keep] == ["do X"]
+
+        keep2, has_shutdown2 = partition_shutdown([normal])
+        assert has_shutdown2 is False
+        assert len(keep2) == 1
+
+    @pytest.mark.asyncio
+    async def test_background_teammate_stops_on_shutdown_request(self, tmp_dir):
+        """生产路径：TaskManager 待命轮询必须响应 shutdown_request。"""
+        from coding_agent.agents.task_manager import TaskManager
+        from coding_agent.teams.mailbox import Mailbox
+
+        mailbox = Mailbox(Path(tmp_dir) / "mailbox")
+        teammate_id = "alice-id-1"
+        # 刻意用 message_type 声明、不带 "[shutdown]" 前缀，验证结构化声明也生效
+        mailbox.write(teammate_id, create_message(
+            from_agent="lead", to_agent=teammate_id,
+            content="stop working", message_type="shutdown_request",
+        ))
+
+        agent = MagicMock()
+        agent.agent_id = teammate_id
+        agent.team_name = "t1"
+        agent.total_input_tokens = 0
+        agent.total_output_tokens = 0
+        agent.run_to_completion = AsyncMock(return_value="initial done")
+        team_manager_mock = MagicMock()
+        team_manager_mock.get_mailbox.return_value = mailbox
+        agent._team_manager = team_manager_mock
+
+        tm = TaskManager()
+        task_id = tm.launch(agent, "initial task")
+        await tm._async_tasks[task_id]
+
+        # 只跑了初始任务；shutdown 请求没有被当成新一轮 prompt
+        assert agent.run_to_completion.await_count == 1
+        assert tm.get(task_id).status == "stopped"
 
 # =====================================================================
 # 5. Backend Detection（后端探测）

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from coding_agent.teams.backend_detect import BackendDetectionError, detect_backend
 from coding_agent.teams.mailbox import Mailbox, create_message
-from coding_agent.teams.models import AgentTeam, BackendType, TeammateInfo, resolve_team_dir, unique_team_name
+from coding_agent.teams.models import LEAD_INBOX, AgentTeam, BackendType, TeammateInfo, resolve_team_dir, unique_team_name
 from coding_agent.teams.progress import TeammateProgress
 from coding_agent.teams.registry import AgentNameRegistry
 from coding_agent.teams.shared_task import SharedTaskStore
@@ -141,12 +141,12 @@ class TeamManager:
         if mailbox:
             msg = create_message(
                 from_agent=member_name,
-                to_agent=team.lead_agent_id,
+                to_agent=LEAD_INBOX,
                 content=f"Teammate '{member_name}' is now idle (run_to_completion finished).",
                 summary=f"{member_name} idle",
                 message_type="text",
             )
-            mailbox.write(team.lead_agent_id, msg)
+            mailbox.write(LEAD_INBOX, msg)
 
     def register_inprocess_handle(self, agent_id: str, handle: InProcessTeammateHandle) -> None:
         self._inprocess_handles[agent_id] = handle
@@ -217,7 +217,7 @@ class TeamManager:
             mailbox = self.get_mailbox(team_name)
             if mailbox is None:
                 continue
-            msgs = mailbox.consume(team.lead_agent_id)
+            msgs = mailbox.consume(LEAD_INBOX)
             if not msgs:
                 continue
             parts = [f'<team-notification team="{team_name}">']

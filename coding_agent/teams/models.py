@@ -9,6 +9,14 @@ from typing import Optional
 
 from coding_agent.teams.progress import TeammateProgress
 
+# lead（团队主 agent）的收件箱固定键。
+#
+# 邮箱目录是按 team 隔离的（<team_dir>/mailbox/），因此同一个 "lead" 键在不同
+# 团队之间互不冲突。所有"写给 lead"和"读取 lead 消息"的代码都必须使用这个键，
+# 否则会出现一边写 "lead.json"、另一边读 "<agent_id>.json" 的地址不一致问题
+# （消息会永久滞留在无人消费的收件箱里）。
+LEAD_INBOX = "lead"
+
 
 class BackendType(str, Enum):
     TMUX = "tmux"

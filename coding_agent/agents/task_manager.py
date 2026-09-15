@@ -87,32 +87,42 @@ class TaskManager:
             if bg.agent.team_name and bg.agent._team_manager:
                 mailbox = bg.agent._team_manager.get_mailbox(bg.agent.team_name)
                 if mailbox:
-                    from coding_agent.teams.mailbox import create_message
+                    from coding_agent.teams.mailbox import create_message, partition_shutdown
+                    from coding_agent.teams.models import LEAD_INBOX
                     msg = create_message(
                         from_agent=bg.name,
-                        to_agent="lead",
+                        to_agent=LEAD_INBOX,
                         content=f"[idle] {bg.name}: completed initial task",
                         summary=f"{bg.name} idle",
                     )
-                    mailbox.write("lead", msg)
+                    mailbox.write(LEAD_INBOX, msg)
 
                     for _ in range(60):
                         await asyncio.sleep(1)
                         msgs = mailbox.consume(bg.agent.agent_id)
                         if not msgs:
                             continue
+                        keep, has_shutdown = partition_shutdown(msgs)
+                        if has_shutdown:
+                            # lead 发出关闭请求：停止待命，后台任务就此结束。
+                            # 若不处理，shutdown_request 会被当成新一轮 prompt，
+                            # 队友反而被唤醒继续干活。
+                            bg.status = "stopped"
+                            break
+                        if not keep:
+                            continue
                         prompt = "\n\n".join(
-                            f"[Message from {m.from_agent}] {m.content}" for m in msgs
+                            f"[Message from {m.from_agent}] {m.content}" for m in keep
                         )
                         result = await bg.agent.run_to_completion(prompt)
                         bg.result = result
                         msg = create_message(
                             from_agent=bg.name,
-                            to_agent="lead",
+                            to_agent=LEAD_INBOX,
                             content=f"[idle] {bg.name}: completed follow-up",
                             summary=f"{bg.name} idle",
                         )
-                        mailbox.write("lead", msg)
+                        mailbox.write(LEAD_INBOX, msg)
 
         except asyncio.CancelledError:
             bg.status = "cancelled"

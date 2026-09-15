@@ -4,29 +4,30 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
-from coding_agent.teams.mailbox import Mailbox, MailboxMessage, create_message
+from coding_agent.teams.mailbox import (
+    Mailbox,
+    MailboxMessage,
+    create_message,
+    partition_shutdown,
+)
 from coding_agent.teams.progress import TeammateProgress, random_verb
 
 if TYPE_CHECKING:
     from coding_agent.agent import Agent
 from coding_agent.conversation import ConversationManager
-from coding_agent.teams.models import TeammateInfo
+from coding_agent.teams.models import LEAD_INBOX, TeammateInfo
 
 log = logging.getLogger(__name__)
 
 # Idle 轮询间隔（秒），对齐 Go 的 IdlePollInterval = 500ms
 IDLE_POLL_INTERVAL = 0.5
 
-# shutdown 消息前缀，对齐 Go 的 ShutdownPrefix
-SHUTDOWN_PREFIX = "[shutdown]"
+# shutdown 判定统一由 mailbox.is_shutdown_request / partition_shutdown 提供
+# （同时识别 message_type 与 "[shutdown]" 内容前缀），此处不再重复实现，
+# 避免两套语义再次漂移。
 
-# lead 名称，对齐 Go 的 LeadName
-LEAD_NAME = "lead"
-
-
-def _is_shutdown_request(msg: MailboxMessage) -> bool:
-    """判断邮箱消息是否为关闭请求。"""
-    return msg.content.strip().startswith(SHUTDOWN_PREFIX)
+# lead 收件箱键，对齐 Go 的 LeadName；统一从 models 引入，避免地址不一致
+LEAD_NAME = LEAD_INBOX
 
 
 def _create_idle_notification(member_name: str, reason: str) -> MailboxMessage:
@@ -66,13 +67,7 @@ async def _wait_for_next_prompt_or_shutdown(
         if not msgs:
             continue
 
-        has_shutdown = False
-        keep: list[MailboxMessage] = []
-        for m in msgs:
-            if _is_shutdown_request(m):
-                has_shutdown = True
-            else:
-                keep.append(m)
+        keep, has_shutdown = partition_shutdown(msgs)
 
         if has_shutdown:
             return "", True

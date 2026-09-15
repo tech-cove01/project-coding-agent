@@ -66,6 +66,7 @@ class SendMessageTool(Tool):
             )
 
         from coding_agent.teams.mailbox import create_message
+        from coding_agent.teams.models import LEAD_INBOX
         from coding_agent.teams.registry import AgentNameRegistry
 
         team = self._team_manager.get_team(self._team_name)
@@ -93,12 +94,14 @@ class SendMessageTool(Tool):
                 if m.agent_id != self._from_agent_id
             ]
             if team.lead_agent_id != self._from_agent_id:
-                member_ids.append(team.lead_agent_id)
+                member_ids.append(LEAD_INBOX)
             mailbox.broadcast(member_ids, msg, exclude=self._from_agent_id)
             self._wake_pane_members(team, member_ids)
             return ToolResult(output=f"Message broadcast to {len(member_ids)} teammates.")
 
-        target_id = registry.resolve(p.to)
+        # lead 用固定收件箱键寻址（邮箱按 team 隔离，键在团队内唯一），
+        # 其余收件人经名称表解析成 agent_id。
+        target_id = LEAD_INBOX if p.to == LEAD_INBOX else registry.resolve(p.to)
         if target_id is None:
             return ToolResult(
                 output=f"Cannot resolve recipient '{p.to}'. Check the name or agent ID.",

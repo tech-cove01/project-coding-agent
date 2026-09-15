@@ -29,6 +29,19 @@ class SharedTask:
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
 
+@dataclass
+class TaskUpdateResult:
+    """``SharedTaskStore.update()`` 的结果：变更后的任务 + 本次的真实变化。
+
+    ``assignee_changed`` 必须在**锁内**判定后带出：调用方（``TaskUpdateTool``）
+    要靠它决定是否推送指派通知。若放在锁外"先读再写"来判断，会引入 TOCTOU
+    窗口（读到旧值 → 别人改完 → 我们基于陈旧判断多发/漏发通知）。
+    """
+
+    task: SharedTask
+    assignee_changed: bool = False
+
+
 # 陈旧锁判定阈值（秒），与 Mailbox._with_lock 保持一致
 _STALE_LOCK_SECONDS = 10
 
@@ -190,14 +203,18 @@ class SharedTaskStore:
         description: str | None = None,
         add_blocks: list[str] | None = None,
         add_blocked_by: list[str] | None = None,
-    ) -> SharedTask | None:
-        def _apply() -> SharedTask | None:
+    ) -> TaskUpdateResult | None:
+        def _apply() -> TaskUpdateResult | None:
             task = self._tasks.get(task_id)
             if task is None:
                 return None
+            # 在锁内判定「assignee 是否真的变了」：调用方靠它决定是否推送
+            # 指派通知，放到锁外判断会有 TOCTOU 窗口。
+            assignee_changed = False
             if status is not None:
                 task.status = status
             if assignee is not None:
+                assignee_changed = task.assignee != assignee
                 task.assignee = assignee
             if description is not None:
                 task.description = description
@@ -209,7 +226,7 @@ class SharedTaskStore:
                 for bid in add_blocked_by:
                     if bid not in task.blocked_by:
                         task.blocked_by.append(bid)
-            return task
+            return TaskUpdateResult(task=task, assignee_changed=assignee_changed)
 
         return self._with_lock(_apply)
 

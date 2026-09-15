@@ -33,9 +33,16 @@ class TaskUpdateTool(Tool):
     is_concurrency_safe = True
 
 
-    def __init__(self, team_manager: TeamManager, team_name: str) -> None:
+    def __init__(
+        self,
+        team_manager: TeamManager,
+        team_name: str,
+        agent_name: str = "",
+    ) -> None:
         self._team_manager = team_manager
         self._team_name = team_name
+        # 用于"指派给自己不发通知"——与 TaskCreateTool 保持同一套排除规则
+        self._agent_name = agent_name
 
 
     async def execute(self, params: BaseModel) -> ToolResult:
@@ -51,7 +58,7 @@ class TaskUpdateTool(Tool):
         if store is None:
             return ToolResult(output=f"Task store not found for team '{self._team_name}'", is_error=True)
 
-        task = store.update(
+        result = store.update(
             task_id=p.task_id,
             status=p.status,
             assignee=p.assignee,
@@ -60,15 +67,29 @@ class TaskUpdateTool(Tool):
             add_blocked_by=p.add_blocked_by,
         )
 
-        if task is None:
+        if result is None:
             return ToolResult(output=f"Task '{p.task_id}' not found", is_error=True)
 
-        # assignee 变更 → push 通知新负责人（任务板本身不产生任何通知）
+        task = result.task
+
+        # assignee 变更 → push 通知新负责人（任务板本身不产生任何通知）。
+        #
+        # 两个必须同时满足的条件，缺一都会产生噪音：
+        #   1) ``result.assignee_changed`` —— 只有**真的变了**才通知。此前只判断
+        #      ``p.assignee`` 非空，于是模型"改状态时顺手把同一个 assignee 再写
+        #      一遍"就会重复通知。
+        #   2) ``task.assignee != self._agent_name`` —— 不通知自己，与
+        #      ``TaskCreateTool`` 的排除规则保持一致。
+        should_notify = (
+            result.assignee_changed
+            and bool(task.assignee)
+            and task.assignee != self._agent_name
+        )
         notified = False
-        if p.assignee:
+        if should_notify:
             notified = self._team_manager.notify_assignee(
                 self._team_name,
-                p.assignee,
+                task.assignee,
                 content=(
                     f"你被指派了任务 #{task.id}：{task.title}。"
                     f"可用 TaskGet {task.id} 查看详情，完成后用 TaskUpdate 标记状态。"
@@ -89,6 +110,6 @@ class TaskUpdateTool(Tool):
             changes.append(f"blocked_by += {', '.join(p.add_blocked_by)}")
 
         output = f"Task {task.id} updated: {'; '.join(changes) if changes else 'no changes'}"
-        if p.assignee and not notified:
-            output += f"\n(提示：未能通知 {p.assignee}——该收件人未注册)"
+        if should_notify and not notified:
+            output += f"\n(提示：未能通知 {task.assignee}——该收件人未注册)"
         return ToolResult(output=output)

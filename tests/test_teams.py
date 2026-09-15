@@ -79,6 +79,15 @@ def tmp_dir():
     yield d
     shutil.rmtree(d, ignore_errors=True)
 
+async def _wait_until(predicate, timeout: float = 5.0, interval: float = 0.01) -> None:
+    """轮询等待条件成立（测试用；避免固定 sleep 造成 flaky）。"""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return
+        await asyncio.sleep(interval)
+    raise AssertionError("condition not met within timeout")
+
 # =====================================================================
 # 1. AgentTeam / TeammateInfo
 # =====================================================================
@@ -222,10 +231,10 @@ class TestSharedTaskStore:
 
         updated = store.update("2", add_blocked_by=["1"])
         assert updated is not None
-        assert "1" in updated.blocked_by
+        assert "1" in updated.task.blocked_by
 
         updated = store.update("1", add_blocks=["2"])
-        assert "2" in updated.blocks
+        assert "2" in updated.task.blocks
 
     def test_update_nonexistent_returns_none(self, tmp_dir):
         store = SharedTaskStore(Path(tmp_dir) / "tasks.json")
@@ -403,6 +412,66 @@ class TestLeadInboxConsistency:
             notes = tm.drain_lead_mailbox()
             assert len(notes) == 1
             assert "carol" in notes[0]
+
+# =====================================================================
+# 4.1b 队友收件箱键一致性（回归测试）
+# =====================================================================
+#
+# 历史问题：spawn_inprocess 用「队友名字」当收件箱键（读 <name>.json），而发送方
+# 经名称表解析后写的是「agent_id」（<agent_id>.json）—— 两个文件，发给队友的消息
+# 永远收不到、且静默滞留。与 lead 收件箱问题是同一类"地址不一致"。
+
+class TestTeammateInboxKeyConsistency:
+
+    def test_pending_messages_are_read_from_agent_id_inbox(self, tmp_dir):
+        """注入必须读 agent_id 的收件箱；用队友名字读只能是空的。"""
+        from coding_agent.teams.spawn_inprocess import _inject_pending_messages
+
+        mailbox = Mailbox(Path(tmp_dir) / "mailbox")
+        mailbox.write("alice-id-1", create_message("lead", "alice-id-1", "接口已确定"))
+
+        assert "接口已确定" in _inject_pending_messages(mailbox, "alice-id-1")
+        # 名字不是收件箱键 —— 拿名字去读读到的是另一个（空）文件
+        assert _inject_pending_messages(mailbox, "alice") == ""
+
+    @pytest.mark.asyncio
+    async def test_teammate_consumes_message_addressed_to_agent_id(
+        self, tmp_dir, monkeypatch,
+    ):
+        """端到端：按 agent_id 投递的消息必须能被长驻队友当成新一轮任务。"""
+        from coding_agent.teams import spawn_inprocess
+        from coding_agent.teams.spawn_inprocess import spawn_inprocess_teammate
+
+        # 缩小待命轮询间隔，避免测试等满 500ms
+        monkeypatch.setattr(spawn_inprocess, "IDLE_POLL_INTERVAL", 0.01)
+
+        mailbox = Mailbox(Path(tmp_dir) / "mailbox")
+        agent = MagicMock()
+        agent.agent_id = "alice-id-1"
+        agent.run_to_completion = AsyncMock(return_value="ok")
+
+        handle = spawn_inprocess_teammate(
+            agent, "do first", name="alice", mailbox=mailbox, team_name="t1",
+        )
+        try:
+            # 第一轮跑完 → idle 通知落到 LEAD_INBOX（收件箱键正确的那一侧）
+            await _wait_until(lambda: mailbox.read(LEAD_INBOX))
+            assert agent.run_to_completion.await_count == 1
+
+            # 按 agent_id 投递 —— 必须被消费成新一轮 prompt
+            mailbox.write("alice-id-1", create_message("lead", "alice-id-1", "do second"))
+            await _wait_until(lambda: agent.run_to_completion.await_count == 2)
+            assert "do second" in agent.run_to_completion.call_args_list[1].args[0]
+
+            # shutdown 能终止队友
+            mailbox.write("alice-id-1", create_message(
+                "lead", "alice-id-1", "stop", message_type="shutdown_request",
+            ))
+            await asyncio.wait_for(handle.task, timeout=5)
+            assert handle.task.done()
+        finally:
+            if not handle.task.done():
+                handle.cancel()
 
 # =====================================================================
 # 4.2 shutdown 语义（回归测试）
@@ -625,6 +694,59 @@ class TestTaskBoardNotification:
             msgs = tm.get_mailbox(team.name).consume("bob-id-1")
             assert len(msgs) == 1
             assert "重构模块" in msgs[0].content
+
+    @pytest.mark.asyncio
+    async def test_task_update_same_assignee_does_not_renotify(self, tmp_dir):
+        """重复指派同一人不应重复通知。
+
+        触发场景：模型改状态时顺手把 assignee 再写一遍 —— 此前"只判断非空"
+        会再发一次指派通知，造成重复噪音。
+        """
+        from coding_agent.tools.task_create import TaskCreateParams, TaskCreateTool
+        from coding_agent.tools.task_update import TaskUpdateParams, TaskUpdateTool
+
+        with patch("coding_agent.teams.models.Path.home", return_value=Path(tmp_dir)):
+            tm, team = self._make_team(tmp_dir, "t-notify-repeat")
+            await TaskCreateTool(tm, team.name, "alice").execute(
+                TaskCreateParams(title="重构模块", assignee="bob")
+            )
+            mailbox = tm.get_mailbox(team.name)
+            assert len(mailbox.consume("bob-id-1")) == 1        # 创建时的那一次
+
+            task_id = tm.get_task_store(team.name).list_tasks()[0].id
+            res = await TaskUpdateTool(tm, team.name, "alice").execute(
+                TaskUpdateParams(task_id=task_id, status="in_progress", assignee="bob")
+            )
+
+            assert res.is_error is False
+            assert mailbox.consume("bob-id-1") == []            # 不再重复通知
+            task = tm.get_task_store(team.name).get(task_id)
+            assert task.status == "in_progress"                 # 但变更照常生效
+
+    @pytest.mark.asyncio
+    async def test_task_update_assign_to_self_does_not_notify(self, tmp_dir):
+        """指派给自己不发通知 —— 与 TaskCreateTool 的排除规则一致。"""
+        from coding_agent.tools.task_create import TaskCreateParams, TaskCreateTool
+        from coding_agent.tools.task_update import TaskUpdateParams, TaskUpdateTool
+
+        with patch("coding_agent.teams.models.Path.home", return_value=Path(tmp_dir)):
+            tm, team = self._make_team(tmp_dir, "t-notify-self")
+            tm.register_member(team.name, TeammateInfo(
+                name="alice", agent_id="alice-id-1", agent_type="worker",
+                model="", worktree_path="", backend_type="in-process", is_active=True,
+            ))
+            await TaskCreateTool(tm, team.name, "alice").execute(
+                TaskCreateParams(title="自留任务")
+            )
+            task_id = tm.get_task_store(team.name).list_tasks()[0].id
+
+            res = await TaskUpdateTool(tm, team.name, "alice").execute(
+                TaskUpdateParams(task_id=task_id, assignee="alice")
+            )
+
+            assert res.is_error is False
+            assert tm.get_mailbox(team.name).consume("alice-id-1") == []
+            assert tm.get_task_store(team.name).get(task_id).assignee == "alice"
 
 # =====================================================================
 # 4.4 队友生命周期 + TaskStop（回归测试）

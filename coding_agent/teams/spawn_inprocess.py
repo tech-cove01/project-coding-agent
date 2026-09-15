@@ -1,3 +1,18 @@
+"""进程内队友的独立运行入口（**非生产主路径**）。
+
+**收件箱键的不变量**：一个队友的收件箱文件名是 ``<agent_id>.json``，
+**不是队友名字**。发送方经 ``TeamManager.resolve_recipient`` 解析收件人时，除
+``"lead"`` 外一律走名称表拿到 ``agent_id``；因此这里读自己的邮箱、以及别人读它，
+都必须用 ``agent.agent_id``。
+
+历史问题：这里曾误用队友 ``name`` 当收件箱键 —— 读 ``<name>.json``，而发送方写
+``<agent_id>.json``，**两个文件**，发给队友的消息永久滞留（与 lead 收件箱问题是
+同一类"地址不一致"）。
+
+**生产路径的队友长驻循环在 ``TaskManager._run_background``**，本模块的邮箱循环
+用于独立/测试场景；两者是同一语义的两处实现，改动时请同步（否则会再次漂移）。
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -26,7 +41,8 @@ IDLE_POLL_INTERVAL = 0.5
 # （同时识别 message_type 与 "[shutdown]" 内容前缀），此处不再重复实现，
 # 避免两套语义再次漂移。
 
-# lead 收件箱键，对齐 Go 的 LeadName；统一从 models 引入，避免地址不一致
+# lead 收件箱键，对齐 Go 的 LeadName；统一从 models 引入，避免地址不一致。
+# 注意：这是「写给 lead」用的键；队友**自己的**收件箱键是 agent.agent_id。
 LEAD_NAME = LEAD_INBOX
 
 
@@ -40,9 +56,13 @@ def _create_idle_notification(member_name: str, reason: str) -> MailboxMessage:
     )
 
 
-def _inject_pending_messages(mailbox: Mailbox, member_name: str) -> str:
-    """读取 teammate 邮箱中的未读消息，拼成 system-reminder 字符串。"""
-    msgs = mailbox.consume(member_name)
+def _inject_pending_messages(mailbox: Mailbox, inbox_key: str) -> str:
+    """读取 teammate 邮箱中的未读消息，拼成 system-reminder 字符串。
+
+    *inbox_key* 必须是 **agent_id**（收件箱文件名 = ``<agent_id>.json``），
+    **不能传队友名字** —— 发送方是按 agent_id 投递的。
+    """
+    msgs = mailbox.consume(inbox_key)
     if not msgs:
         return ""
     parts = ["You have new messages:\n"]
@@ -53,9 +73,11 @@ def _inject_pending_messages(mailbox: Mailbox, member_name: str) -> str:
 
 async def _wait_for_next_prompt_or_shutdown(
     mailbox: Mailbox,
-    member_name: str,
+    inbox_key: str,
 ) -> tuple[str, bool]:
     """阻塞轮询邮箱，等到有新消息后返回 (prompt, is_shutdown)。
+
+    *inbox_key* 必须是 **agent_id**（同 ``_inject_pending_messages``）。
 
     对齐 Go 的 waitForNextPromptOrShutdown：循环 sleep + 检查邮箱。
     收到 shutdown 消息返回 ("", True)；否则把普通消息拼成下一轮的 prompt。
@@ -63,7 +85,7 @@ async def _wait_for_next_prompt_or_shutdown(
     while True:
         await asyncio.sleep(IDLE_POLL_INTERVAL)
 
-        msgs = mailbox.consume(member_name)
+        msgs = mailbox.consume(inbox_key)
         if not msgs:
             continue
 
@@ -167,11 +189,14 @@ def spawn_inprocess_teammate(
 
             next_prompt = prompt
             idle_reason = "available"
+            # 收件箱键 = agent_id（**不是队友名字**）：发送方按 agent_id 投递，
+            # 用名字读会读到另一个空文件（见模块 docstring 的不变量说明）。
+            inbox_key = agent.agent_id
 
             while True:
                 # 注入本轮开始前邮箱里堆积的消息
                 if mailbox is not None:
-                    reminder = _inject_pending_messages(mailbox, name)
+                    reminder = _inject_pending_messages(mailbox, inbox_key)
                     if reminder:
                         conv.add_system_reminder(reminder)
 
@@ -206,7 +231,7 @@ def spawn_inprocess_teammate(
 
                 # 轮询等待 lead 下发新任务或 shutdown 指令
                 new_prompt, shutdown = await _wait_for_next_prompt_or_shutdown(
-                    mailbox, name,
+                    mailbox, inbox_key,
                 )
                 if shutdown:
                     progress.status = "completed"

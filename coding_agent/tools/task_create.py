@@ -51,12 +51,29 @@ class TaskCreateTool(Tool):
             created_by=self._agent_name,
         )
 
-        return ToolResult(
-            output=(
-                f"Task created:\n"
-                f"  ID: {task.id}\n"
-                f"  Title: {task.title}\n"
-                f"  Status: {task.status}\n"
-                f"  Assignee: {task.assignee or '(unassigned)'}"
+        # 任务板是共享状态（pull），变更本身不会通知任何人：被指派人若不主动
+        # 来查，就永远不知道自己被派了活。这里补一条邮箱通知（push），
+        # 让「状态走任务板、信号走邮箱」两套机制真正缝合起来。
+        notified = False
+        if task.assignee and task.assignee != self._agent_name:
+            notified = self._team_manager.notify_assignee(
+                self._team_name,
+                task.assignee,
+                content=(
+                    f"你被指派了任务 #{task.id}：{task.title}。"
+                    f"可用 TaskGet {task.id} 查看详情，完成后用 TaskUpdate 标记状态。"
+                ),
+                summary=f"assigned task #{task.id}",
+                from_agent=self._agent_name or "task-board",
             )
+
+        output = (
+            f"Task created:\n"
+            f"  ID: {task.id}\n"
+            f"  Title: {task.title}\n"
+            f"  Status: {task.status}\n"
+            f"  Assignee: {task.assignee or '(unassigned)'}"
         )
+        if task.assignee and task.assignee != self._agent_name and not notified:
+            output += f"\n  (提示：未能通知 {task.assignee}——该收件人未注册)"
+        return ToolResult(output=output)

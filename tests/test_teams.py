@@ -478,6 +478,155 @@ class TestShutdownHandling:
         assert tm.get(task_id).status == "stopped"
 
 # =====================================================================
+# 4.3 任务板一致性 + 指派通知（回归测试）
+# =====================================================================
+#
+# 任务板是「共享状态」：多个实例/进程写同一个文件。此前它既没有文件锁、
+# 写入前也不重新加载，会静默丢更新；而且它的变更不产生任何通知，
+# 被指派人无从得知。下面把这两处行为都锁死。
+
+class TestSharedTaskStoreConsistency:
+
+    def test_write_reloads_before_saving(self, tmp_dir):
+        """写前必须重新加载，否则会用陈旧缓存覆盖别人的写入（丢数据）。"""
+        path = Path(tmp_dir) / "tasks.json"
+        a = SharedTaskStore(path)
+        b = SharedTaskStore(path)          # b 先加载：此时文件还是空的
+
+        t1 = a.create(title="t1")          # a 写入后，b 的缓存已陈旧
+        t2 = b.create(title="t2")          # b 若不重载：会覆盖 t1，且 id 冲突
+
+        assert t1.id != t2.id
+        titles = {t.title for t in SharedTaskStore(path).list_tasks()}
+        assert titles == {"t1", "t2"}
+
+    def test_update_reloads_before_saving(self, tmp_dir):
+        """update 同样不能在陈旧缓存上写，否则会抹掉别人的新任务与新状态。"""
+        path = Path(tmp_dir) / "tasks.json"
+        a = SharedTaskStore(path)
+        t1 = a.create(title="t1")
+
+        b = SharedTaskStore(path)
+        b.create(title="t2")
+        b.update(t1.id, status="completed")
+
+        # a 仍持有旧缓存，此处更新 assignee：不能丢 t2，也不能把 completed 回退
+        a.update(t1.id, assignee="bob")
+
+        store = SharedTaskStore(path)
+        assert {t.title for t in store.list_tasks()} == {"t1", "t2"}
+        t1_after = store.get(t1.id)
+        assert t1_after.assignee == "bob"
+        assert t1_after.status == "completed"
+
+    def test_lock_released_and_no_temp_left(self, tmp_dir):
+        path = Path(tmp_dir) / "tasks.json"
+        store = SharedTaskStore(path)
+        store.create(title="t")
+
+        assert not (Path(tmp_dir) / "tasks.json.lock").exists()
+        assert list(Path(tmp_dir).glob("*.tmp*")) == []
+
+    def test_stale_lock_is_recovered(self, tmp_dir):
+        path = Path(tmp_dir) / "tasks.json"
+        lock = Path(tmp_dir) / "tasks.json.lock"
+        store = SharedTaskStore(path)
+
+        lock.write_text("", encoding="utf-8")
+        old = time.time() - 60
+        os.utime(lock, (old, old))
+
+        task = store.create(title="t")     # 应清理陈旧锁并正常写入
+        assert task.id == "1"
+        assert not lock.exists()
+
+class TestTaskBoardNotification:
+
+    def _make_team(self, tmp_dir, team_name):
+        from coding_agent.teams.manager import TeamManager
+        tm = TeamManager()
+        team = tm.create_team(team_name, lead_agent_id="lead-uuid-n", is_interactive=False)
+        tm.register_member(team.name, TeammateInfo(
+            name="bob", agent_id="bob-id-1", agent_type="worker",
+            model="", worktree_path="", backend_type="in-process", is_active=True,
+        ))
+        return tm, team
+
+    @pytest.mark.asyncio
+    async def test_task_create_pushes_to_assignee(self, tmp_dir):
+        from coding_agent.tools.task_create import TaskCreateParams, TaskCreateTool
+
+        with patch("coding_agent.teams.models.Path.home", return_value=Path(tmp_dir)):
+            tm, team = self._make_team(tmp_dir, "t-notify")
+            res = await TaskCreateTool(tm, team.name, "alice").execute(
+                TaskCreateParams(title="实现登录接口", assignee="bob")
+            )
+
+            assert res.is_error is False
+            msgs = tm.get_mailbox(team.name).consume("bob-id-1")
+            assert len(msgs) == 1
+            assert "实现登录接口" in msgs[0].content
+            assert msgs[0].from_agent == "alice"
+
+    @pytest.mark.asyncio
+    async def test_task_create_pushes_to_lead_alias(self, tmp_dir):
+        from coding_agent.tools.task_create import TaskCreateParams, TaskCreateTool
+
+        with patch("coding_agent.teams.models.Path.home", return_value=Path(tmp_dir)):
+            tm, team = self._make_team(tmp_dir, "t-notify-lead")
+            await TaskCreateTool(tm, team.name, "alice").execute(
+                TaskCreateParams(title="汇总结果", assignee="lead")
+            )
+
+            assert len(tm.get_mailbox(team.name).consume(LEAD_INBOX)) == 1
+
+    @pytest.mark.asyncio
+    async def test_task_create_unassigned_sends_nothing(self, tmp_dir):
+        from coding_agent.tools.task_create import TaskCreateParams, TaskCreateTool
+
+        with patch("coding_agent.teams.models.Path.home", return_value=Path(tmp_dir)):
+            tm, team = self._make_team(tmp_dir, "t-notify-none")
+            await TaskCreateTool(tm, team.name, "alice").execute(
+                TaskCreateParams(title="无主任务")
+            )
+
+            assert tm.get_mailbox(team.name).consume("bob-id-1") == []
+
+    @pytest.mark.asyncio
+    async def test_task_create_unknown_assignee_warns_without_error(self, tmp_dir):
+        from coding_agent.tools.task_create import TaskCreateParams, TaskCreateTool
+
+        with patch("coding_agent.teams.models.Path.home", return_value=Path(tmp_dir)):
+            tm, team = self._make_team(tmp_dir, "t-notify-unknown")
+            res = await TaskCreateTool(tm, team.name, "alice").execute(
+                TaskCreateParams(title="x", assignee="nobody")
+            )
+
+            assert res.is_error is False
+            assert "未能通知" in res.output
+
+    @pytest.mark.asyncio
+    async def test_task_update_pushes_to_new_assignee(self, tmp_dir):
+        from coding_agent.tools.task_create import TaskCreateParams, TaskCreateTool
+        from coding_agent.tools.task_update import TaskUpdateParams, TaskUpdateTool
+
+        with patch("coding_agent.teams.models.Path.home", return_value=Path(tmp_dir)):
+            tm, team = self._make_team(tmp_dir, "t-notify-update")
+            await TaskCreateTool(tm, team.name, "alice").execute(
+                TaskCreateParams(title="重构模块")
+            )
+            task_id = tm.get_task_store(team.name).list_tasks()[0].id
+
+            res = await TaskUpdateTool(tm, team.name).execute(
+                TaskUpdateParams(task_id=task_id, assignee="bob")
+            )
+
+            assert res.is_error is False
+            msgs = tm.get_mailbox(team.name).consume("bob-id-1")
+            assert len(msgs) == 1
+            assert "重构模块" in msgs[0].content
+
+# =====================================================================
 # 5. Backend Detection（后端探测）
 # =====================================================================
 

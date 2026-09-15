@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from coding_agent.teams.backend_detect import BackendDetectionError, detect_backend
-from coding_agent.teams.mailbox import Mailbox, create_message
+from coding_agent.teams.mailbox import Mailbox, MailboxMessage, create_message
 from coding_agent.teams.models import LEAD_INBOX, AgentTeam, BackendType, TeammateInfo, resolve_team_dir, unique_team_name
 from coding_agent.teams.progress import TeammateProgress
 from coding_agent.teams.registry import AgentNameRegistry
@@ -157,6 +157,72 @@ class TeamManager:
 
     def get_pane_id(self, agent_id: str) -> str | None:
         return self._pane_ids.get(agent_id)
+
+
+    # ---------- 消息投递（邮箱 = 消息传递 / push） ----------
+
+    def resolve_recipient(self, team_name: str, to: str) -> str | None:
+        """把收件人解析成「收件箱键」。
+
+        * ``"lead"`` → 固定的 ``LEAD_INBOX``（邮箱按 team 隔离，键在团队内唯一）
+        * 其他 → 经名称表解析成 ``agent_id``（名字或 id 都能解析）
+
+        收件人解析**只在这里实现一份**，避免多处各写一套导致地址漂移
+        （正是之前 lead 收件箱地址不一致的根因）。
+        """
+        if to == LEAD_INBOX:
+            return LEAD_INBOX
+        return AgentNameRegistry.instance().resolve(to)
+
+    def wake_pane(self, agent_id: str) -> None:
+        """唤醒阻塞在轮询里的面板队友（tmux/iTerm2）。进程内队友无需唤醒。"""
+        pane_id = self.get_pane_id(agent_id)
+        if not pane_id:
+            return
+        try:
+            from coding_agent.teams.spawn_tmux import send_keys_to_pane
+            send_keys_to_pane(pane_id, "")
+        except Exception:
+            log.debug("Failed to wake pane for %s", agent_id, exc_info=True)
+
+    def deliver(self, team_name: str, to: str, message: MailboxMessage) -> bool:
+        """把消息投递到收件人邮箱并唤醒对方。
+
+        无法解析收件人（或团队没有邮箱）时返回 ``False``。
+        """
+        target = self.resolve_recipient(team_name, to)
+        if target is None:
+            return False
+        mailbox = self.get_mailbox(team_name)
+        if mailbox is None:
+            return False
+        mailbox.write(target, message)
+        self.wake_pane(target)
+        return True
+
+    def notify_assignee(
+        self,
+        team_name: str,
+        assignee: str,
+        content: str,
+        summary: str = "",
+        from_agent: str = "task-board",
+    ) -> bool:
+        """任务板（pull）发生指派时，主动 push 一条通知给被指派人。
+
+        任务板本身**不产生任何通知**（纯 pull）。若不补这一步，被指派人
+        永远不会知道自己被派了活——这正是「共享状态」需要一根「消息」
+        来缝合的地方：状态走任务板，信号走邮箱。
+        """
+        if not assignee:
+            return False
+        msg = create_message(
+            from_agent=from_agent,
+            to_agent=assignee,
+            content=content,
+            summary=summary or "task assigned",
+        )
+        return self.deliver(team_name, assignee, msg)
 
     def delete_team(self, team_name: str) -> None:
         team = self.get_team(team_name)

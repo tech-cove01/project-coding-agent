@@ -67,7 +67,6 @@ class SendMessageTool(Tool):
 
         from coding_agent.teams.mailbox import create_message
         from coding_agent.teams.models import LEAD_INBOX
-        from coding_agent.teams.registry import AgentNameRegistry
 
         team = self._team_manager.get_team(self._team_name)
         if team is None:
@@ -86,8 +85,6 @@ class SendMessageTool(Tool):
             metadata=p.metadata,
         )
 
-        registry = AgentNameRegistry.instance()
-
         if p.to == "*":
             member_ids = [
                 m.agent_id for m in team.members
@@ -96,34 +93,16 @@ class SendMessageTool(Tool):
             if team.lead_agent_id != self._from_agent_id:
                 member_ids.append(LEAD_INBOX)
             mailbox.broadcast(member_ids, msg, exclude=self._from_agent_id)
-            self._wake_pane_members(team, member_ids)
+            for aid in member_ids:
+                self._team_manager.wake_pane(aid)
             return ToolResult(output=f"Message broadcast to {len(member_ids)} teammates.")
 
-        # lead 用固定收件箱键寻址（邮箱按 team 隔离，键在团队内唯一），
-        # 其余收件人经名称表解析成 agent_id。
-        target_id = LEAD_INBOX if p.to == LEAD_INBOX else registry.resolve(p.to)
-        if target_id is None:
+        # 收件人解析 + 投递 + 唤醒面板队友统一走 TeamManager，
+        # 避免多处各写一套地址逻辑（lead 别名 / 名称表解析）
+        if not self._team_manager.deliver(self._team_name, p.to, msg):
             return ToolResult(
                 output=f"Cannot resolve recipient '{p.to}'. Check the name or agent ID.",
                 is_error=True,
             )
 
-        mailbox.write(target_id, msg)
-        self._wake_pane(target_id)
-
         return ToolResult(output=f"Message sent to '{p.to}'.")
-
-
-    def _wake_pane(self, agent_id: str) -> None:
-        pane_id = self._team_manager.get_pane_id(agent_id)
-        if pane_id is None:
-            return
-        try:
-            from coding_agent.teams.spawn_tmux import send_keys_to_pane
-            send_keys_to_pane(pane_id, "")
-        except Exception:
-            pass
-
-    def _wake_pane_members(self, team: Any, agent_ids: list[str]) -> None:
-        for aid in agent_ids:
-            self._wake_pane(aid)

@@ -63,6 +63,19 @@ class TaskUpdateTool(Tool):
         if task is None:
             return ToolResult(output=f"Task '{p.task_id}' not found", is_error=True)
 
+        # assignee 变更 → push 通知新负责人（任务板本身不产生任何通知）
+        notified = False
+        if p.assignee:
+            notified = self._team_manager.notify_assignee(
+                self._team_name,
+                p.assignee,
+                content=(
+                    f"你被指派了任务 #{task.id}：{task.title}。"
+                    f"可用 TaskGet {task.id} 查看详情，完成后用 TaskUpdate 标记状态。"
+                ),
+                summary=f"assigned task #{task.id}",
+            )
+
         changes: list[str] = []
         if p.status:
             changes.append(f"status → {p.status}")
@@ -75,6 +88,7 @@ class TaskUpdateTool(Tool):
         if p.add_blocked_by:
             changes.append(f"blocked_by += {', '.join(p.add_blocked_by)}")
 
-        return ToolResult(
-            output=f"Task {task.id} updated: {'; '.join(changes) if changes else 'no changes'}"
-        )
+        output = f"Task {task.id} updated: {'; '.join(changes) if changes else 'no changes'}"
+        if p.assignee and not notified:
+            output += f"\n(提示：未能通知 {p.assignee}——该收件人未注册)"
+        return ToolResult(output=output)
